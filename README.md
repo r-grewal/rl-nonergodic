@@ -7,7 +7,7 @@ Agents are trained on a diverse range of environments. Form OpenAI gym: 'LunarLa
 
 Loss functions used include MSE, MAE, Huber, Hypersurface Cost, Cauchy and Truncated Cauchy. Scale Parameter for Cauchy distribution is estimated using the Nagy algorithm and truncation is performed using heuristics. Non-ergodicity model is currently being tested.
 
-This repository will be submitted by mid-2021 as part of final project of ‘DATA5709 Capstone Project – Individual’ in partial fulfilment of the requirements of the Masters of Data Science at the University of Sydney, Australia. 
+This repository will be submitted by mid-2021 as a component of ‘DATA5709: Capstone Project – Individual’ in partial fulfilment of the requirements of the Masters of Data Science at the University of Sydney, Australia. 
 
 Code tested both locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz CL16 RAM, Samsung 980 Pro and on the Artemis HPC at the University of Sydney.
 
