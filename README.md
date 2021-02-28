@@ -12,7 +12,7 @@ This repository will be submitted by mid-2021 as a component of ‘DATA5709: Cap
 Code tested both locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz CL16 RAM, Samsung 980 Pro and on the Artemis HPC at the University of Sydney.
 
 ## Algorithms Utilised
-* Twin Delayed Deep Deterministic Policy Gradients (TD3) ([Fujimoto et al. 2018](https://arxiv.org/abs/1802.09477))
+* Twin Delayed Deep Deterministic Policy Gradients (TD3) ([Fujimoto et al. 2018](https://arxiv.org/abs/1802.09477.pdf))
 * Soft Actor-Critic (SAC) ([Haarnoja et al. 2018a](https://arxiv.org/pdf/1801.01290.pdf), [Haarnoja et al. 2018b](https://arxiv.org/pdf/1812.05905.pdf), [Haarnoja et al. 2019](https://arxiv.org/pdf/1812.11103.pdf))
 
 ## Cauchy Function Scale Estimation and Truncation
