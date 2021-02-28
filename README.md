@@ -23,7 +23,7 @@ Code tested both locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz 
 ## Comments on Implementation
 TD3 appears to be well-optimised and functioning. Ready to parallelise across multiple GPUs to run 10 trials, each of 1e6 episodes per environment per loss function.
 
-SAC currently requires tuning to transfer high CPU usage (8 threads at 100% utilisation) to GPU. Algorithm also appears for certain environments to struggle in learning multi-modal solutions. Additionally, our use of true multi-dimensional stochastic Gaussian noise added for each action component inside every sample contained the mini-batch appears to reduce performance, unlike the simpler Gaussian sampling used by the overwhelming majority of available implementations.
+SAC currently requires tuning to transfer high CPU usage (8 threads at 100% utilisation) to the GPU. Algorithm also appears for certain environments to struggle in learning multi-modal solutions. Additionally, our use of true multi-dimensional stochastic Gaussian noise added to each policy action component inside every sample contained the mini-batch appears to reduce performance compared the simpler Gaussian sampling used by the overwhelming majority of available implementations.
 
 ## Potential Applications
 Existing portfolio management tool in finance, systems control, risk management systems all to some degree rely on the use of expectation values (probability weighed averages) which are inherently and deeply flawed since no individual or institution ever experiences the ‘expected’ value. 
