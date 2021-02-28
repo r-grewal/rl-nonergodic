@@ -96,7 +96,6 @@ class Agent_td3():
             mu += self.actor.forward(current_state)
 
         action = T.clamp(mu, self.min_action, self.max_action)
-        print(action)
         next_action = action.detach().cpu().numpy()
 
         self.time_step += 1
