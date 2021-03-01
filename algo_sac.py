@@ -87,9 +87,10 @@ class Agent_sac():
         """        
         # make single state a list for stochastic sampling then select state action
         current_state = T.tensor([state], dtype=T.float).to(self.actor.device)
-        action, _ = self.actor.stochastic_mv_gaussian(current_state)
+        # action, _ = self.actor.stochastic_mv_gaussian(current_state)
+        action, _ = self.actor.stochastic_gaussian(current_state)
         next_action = action.detach().cpu().numpy()[0]
-        # print(next_action)
+
         return next_action
 
     def store_transistion(self, state, action, reward, next_state, done):
@@ -110,7 +111,7 @@ class Agent_sac():
         Agent learning via SAC algorithm.
 
         Paramters:
-            loss_type (str): Cauchy, CE, Huber, KL, MAE, MSE, TCauchy loss functions
+            loss_type (str): Cauchy, Huber, MAE, MSE, TCauchy loss functions
 
         Returns:
             q1_loss: loss of critic 1
@@ -118,12 +119,13 @@ class Agent_sac():
             actor_loss: loss of actor
             scale_1: effective Cauchy scale parameter for critic 1 from Nagy algorithm
             scale_2: effective Cauchy scale parameter for critic 2 from Nagy algorithm
-            alpha: entropy adjustment factor (temperature)###################### add to main
+            logalpha: log entropy adjustment factor (temperature)
         """
         # return nothing till batch size less than replay buffer
         if self.memory.mem_idx < self.batch_size:
             return np.nan, np.nan, np.nan, np.nan, np.nan, self.log_alpha.detach().cpu().numpy()
 
+        # uniform sampling from replay buffer
         states, actions, rewards, next_states, dones = self.memory.sample_exp(self.batch_size)
 
         batch_states = T.tensor(states, dtype=T.float).to(self.critic_1.device)
@@ -133,36 +135,36 @@ class Agent_sac():
         batch_dones = T.tensor(dones, dtype=T.bool).to(self.critic_1.device)
         self.log_alpha = self.log_alpha.to(self.critic_1.device)
 
-        # sample stochastic action policy
+        # sample next stochastic action policy for target critic network based on mini-batch
         batch_next_stoc_actions, batch_next_logprob_actions = \
                                         self.actor.stochastic_mv_gaussian(batch_next_states)
+        # batch_next_stoc_actions, batch_next_logprob_actions = \
+        #                                 self.actor.stochastic_gaussian(batch_next_states)
+        batch_next_logprob_actions = batch_next_logprob_actions.view(-1)
 
-        # obtain twin soft target Q-values for mini-batch and check terminal status
+        # obtain twin next soft target Q-values for mini-batch and check terminal status
         q1_target = self.critic_1_target.forward(batch_next_states, batch_next_stoc_actions)
         q2_target = self.critic_2_target.forward(batch_next_states, batch_next_stoc_actions)
         q1_target[batch_dones], q2_target[batch_dones] = 0.0, 0.0
         q1_target, q2_target = q1_target.view(-1), q2_target.view(-1)
-
+    
         # twin duelling soft target critic values
         soft_q_target = T.min(q1_target, q2_target)
         soft_value = soft_q_target - self.log_alpha.exp() * batch_next_logprob_actions
         target = self.reward_scale * batch_rewards + self.gamma * soft_value
         target = target.view(self.batch_size, -1)
 
-        # obtain twin Q-values for current step
+        # obtain current twin soft Q-values for mini-batch
         q1 = self.critic_1.forward(batch_states, batch_actions)
         q2 = self.critic_2.forward(batch_states, batch_actions)
-
-        if self.loss_type == 'TCauchy':
-            q1, target = utils.truncation(q1, target)
-            q2, target = utils.truncation(q2, target)
         
-        # backpropogation of critic loss
+        # backpropogation of critic loss while retaining graph
         self.critic_1.optimizer.zero_grad()
         self.critic_2.optimizer.zero_grad()
 
         q1_loss = utils.loss_function(q1, target, self.loss_type, self.cauchy_scale)
         q2_loss = utils.loss_function(q2, target, self.loss_type, self.cauchy_scale)
+    
         critic_loss = 0.5 * (q1_loss + q2_loss)
         critic_loss.backward(retain_graph=True)
 
@@ -172,10 +174,9 @@ class Agent_sac():
         self.learn_step_cntr += 1
 
         # updates Cauchy scale parameter using the Nagy algorithm
-        if self.loss_type == 'Cauchy' or 'TCauchy':
-            scale_1 = utils.nagy_algo(q1, target, self.cauchy_scale)
-            scale_2 = utils.nagy_algo(q2, target, self.cauchy_scale)
-            self.cauchy_scale = (scale_1 + scale_2)/2
+        scale_1 = utils.nagy_algo(q1, target, self.cauchy_scale)
+        scale_2 = utils.nagy_algo(q2, target, self.cauchy_scale)
+        self.cauchy_scale = (scale_1 + scale_2)/2
 
         # update actor, temperature and target critic networks every interval
         if self.learn_step_cntr % self.actor_update_interval != 0:
@@ -183,21 +184,31 @@ class Agent_sac():
             numpy_q2_loss = q2_loss.detach().cpu().numpy()
             return numpy_q1_loss, numpy_q2_loss, np.nan, scale_1, scale_2, np.nan
 
-        q1 = self.critic_1.forward(batch_states, batch_actions)
-        q2 = self.critic_2.forward(batch_states, batch_actions)
+        # sample current stochastic action policy for critic network based on mini-batch
+        batch_stoc_actions, batch_logprob_actions = \
+                                        self.actor.stochastic_mv_gaussian(batch_states)
+        # batch_stoc_actions, batch_logprob_actions = \
+        #                                   self.actor.stochastic_gaussian(batch_states)
+        batch_logprob_actions = batch_logprob_actions.view(-1)
+
+        # obtain twin current soft-Q values for mini-batch using stochastic sampling
+        q1 = self.critic_1.forward(batch_states, batch_stoc_actions)
+        q2 = self.critic_2.forward(batch_states, batch_stoc_actions)
         soft_q = T.min(q1, q2).view(-1)
 
+        # learn Gaussian actor policy
         self.actor.optimizer.zero_grad()
 
-        actor_loss = self.log_alpha.exp() * batch_next_logprob_actions - soft_q.clone()
+        actor_loss = self.log_alpha.exp() * batch_logprob_actions - soft_q
         actor_loss = actor_loss.mean()
         actor_loss.backward()
         
         self.actor.optimizer.step()
 
+        # learn temperature by approximating gradient
         self.temp_optimiser.zero_grad()
 
-        temp_loss = -self.log_alpha.exp() * (batch_next_logprob_actions.detach() + self.entropy_target)
+        temp_loss = -self.log_alpha.exp() * (batch_logprob_actions.detach() + self.entropy_target)
         temp_loss = temp_loss.mean()
         temp_loss.backward()
 
@@ -227,7 +238,7 @@ class Agent_sac():
 
     def save_models(self):
         """
-        Saves all 6 networks.
+        Saves all 5 networks.
         """
         self.actor.save_checkpoint()
         self.critic_1.save_checkpoint()
@@ -237,7 +248,7 @@ class Agent_sac():
 
     def load_models(self):
         """
-        Loads all 6 networks.
+        Loads all 5 networks.
         """
         self.actor.load_checkpoint()
         self.critic_1.load_checkpoint()
