@@ -1,7 +1,6 @@
 import os
 import torch as T
 import torch.nn as nn
-from torch.nn import parameter
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions.multivariate_normal import MultivariateNormal
@@ -27,10 +26,9 @@ class ActorNetwork(nn.Module):
             algo_name (string): name of algorithm
             loss_type (str): Cauchy, CE, Huber, KL, MAE, MSE, TCauchy loss functions
             nn_name (string): name of network
-
         """
         super(ActorNetwork, self).__init__()
-        self.env_id = env_id
+        self.env_id = str(env_id)
         self.input_dims = input_dims
         self.fc1_dim = int(fc1_dim)
         self.fc2_dim = int(fc2_dim)
@@ -43,7 +41,9 @@ class ActorNetwork(nn.Module):
         self.nn_name = str(nn_name)
         
         # directory to save network checkpoints
-        self.file_checkpoint = os.path.join(self.algo_name, self.env_id+'_'+self.algo_name
+        if not os.path.exists(algo_name+'/'+env_id):
+            os.makedirs(algo_name+'/'+env_id)
+        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape
@@ -82,7 +82,7 @@ class ActorNetwork(nn.Module):
         with tanh bounding using Jacobian transformation.
 
         Parameters:
-            state (list): current environment state
+            state (list): current environment state or mini-bathc
 
         Returns:
             bounded_action (list, float): action truncated by tanh and scaled by max action
@@ -126,9 +126,18 @@ class ActorNetwork(nn.Module):
     def stochastic_gaussian(self, state):
         """ 
         [REDUNDANT] Stochastic action selection sampled from unbounded Gaussian input noise.
+        
+        Parameters:
+            state (list): current environment state or mini-bathc
+
+        Returns:
+            bounded_action (list, float): action truncated by tanh and scaled by max action
+            bounded_logprob_action (float): log probability of sampled truncated action 
         """
-        mu, log_sigma = self.forward(state)
+        moments = self.forward(state)
+        mu, log_sigma = moments[:, :self.num_actions], moments[:, self.num_actions:]
         std = log_sigma.exp()
+
         probabilities = T.distributions.normal.Normal(loc=mu, scale=std)
 
         unbounded_action = probabilities.rsample()
@@ -141,7 +150,7 @@ class ActorNetwork(nn.Module):
         bounded_action = bounded_action.to(self.device)
         bounded_logprob_action = bounded_logprob_action.to(self.device)
 
-        return bounded_action, bounded_logprob_action  # make sure output dimension is correct
+        return bounded_action, bounded_logprob_action
 
     def save_checkpoint(self):
         print('... saving checkpoint')
@@ -173,7 +182,7 @@ class CriticNetwork(nn.Module):
             algo_name (string): name of algorithm
         """
         super(CriticNetwork, self).__init__()
-        self.env_id = env_id
+        self.env_id = str(env_id)
         self.input_dims = input_dims
         self.fc1_dim = int(fc1_dim)
         self.fc2_dim = int(fc2_dim)
@@ -185,7 +194,9 @@ class CriticNetwork(nn.Module):
         self.nn_name = str(nn_name)
 
         # directory to save network checkpoints
-        self.file_checkpoint = os.path.join(self.algo_name, self.env_id+'_'+self.algo_name
+        if not os.path.exists(algo_name+'/'+env_id):
+            os.makedirs(algo_name+'/'+env_id)
+        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape and number of actions
