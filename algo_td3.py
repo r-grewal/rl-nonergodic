@@ -49,9 +49,9 @@ class Agent_td3():
 
         self.memory = ReplayBuffer(max_size, self.input_dims, self.num_actions)
         self.batch_size = int(batch_size)
-        self.policy_noise = policy_noise
-        self.target_policy_noise = target_policy_noise
-        self.target_policy_clip = target_policy_clip
+        self.policy_noise = policy_noise * self.max_action
+        self.target_policy_noise = target_policy_noise * self.max_action
+        self.target_policy_clip = target_policy_clip * self.max_action
 
         self.loss_type = str(loss_type)
         self.cauchy_scale = cauchy_scale
@@ -120,7 +120,7 @@ class Agent_td3():
         Agent learning via TD3 algorithm.
 
         Parameters:
-            loss_type (str): Cauchy, CE, Huber, KL, MAE, MSE, TCauchy loss functions
+            loss_type (str): Cauchy, Huber, MAE, MSE, TCauchy loss functions
 
         Returns:
             q1_loss: loss of critic 1
@@ -133,6 +133,7 @@ class Agent_td3():
         if self.memory.mem_idx < self.batch_size:
             return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 
+        # uniform sampling from replay buffer
         states, actions, rewards, next_states, dones = self.memory.sample_exp(self.batch_size)
 
         batch_states = T.tensor(states, dtype=T.float).to(self.critic_1.device)
@@ -141,7 +142,7 @@ class Agent_td3():
         batch_next_states = T.tensor(next_states, dtype=T.float).to(self.critic_1.device)
         batch_dones = T.tensor(dones, dtype=T.bool).to(self.critic_1.device) 
 
-        # add random noise to Gaussian noise to each component of next action with clipping
+        # add random Gaussian noise to each component of next action with clipping
         target_action_noise = T.tensor(np.random.normal(loc=0, scale=self.target_policy_noise, 
                 size=(batch_actions.shape)), dtype=T.float).clamp(-self.target_policy_clip, self.target_policy_clip)
         target_action_noise = target_action_noise.to(self.actor.device)
@@ -163,10 +164,6 @@ class Agent_td3():
         # obtain twin Q-values for current step
         q1 = self.critic_1.forward(batch_states, batch_actions)
         q2 = self.critic_2.forward(batch_states, batch_actions)
-
-        if self.loss_type == 'TCauchy':
-            q1, target = utils.truncation(q1, target)
-            q2, target = utils.truncation(q2, target)
         
         # backpropogation of critic loss
         self.critic_1.optimizer.zero_grad()
@@ -194,6 +191,7 @@ class Agent_td3():
             numpy_q2_loss = q2_loss.detach().cpu().numpy()
             return numpy_q1_loss, numpy_q2_loss, np.nan, scale_1, scale_2, np.nan
 
+        # DDPG gradient ascent via backpropogation
         self.actor.optimizer.zero_grad()
 
         actor_q1_loss = self.critic_1.forward(batch_states, self.actor.forward(batch_states))
