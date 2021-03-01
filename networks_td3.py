@@ -26,7 +26,7 @@ class ActorNetwork(nn.Module):
             nn_name (string): name of network
         """
         super(ActorNetwork, self).__init__()
-        self.env_id = env_id
+        self.env_id = str(env_id)
         self.input_dims = input_dims
         self.fc1_dim = int(fc1_dim)
         self.fc2_dim = int(fc2_dim)
@@ -38,7 +38,9 @@ class ActorNetwork(nn.Module):
         self.nn_name = str(nn_name)
         
         # directory to save network checkpoints
-        self.file_checkpoint = os.path.join(self.algo_name, self.env_id+'_'+self.algo_name
+        if not os.path.exists(algo_name+'/'+env_id):
+            os.makedirs(algo_name+'/'+env_id)
+        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape
@@ -99,7 +101,7 @@ class CriticNetwork(nn.Module):
             algo_name (string): name of algorithm
         """
         super(CriticNetwork, self).__init__()
-        self.env_id = env_id
+        self.env_id = str(env_id)
         self.input_dims = input_dims
         self.fc1_dim = int(fc1_dim)
         self.fc2_dim = int(fc2_dim)
@@ -111,7 +113,9 @@ class CriticNetwork(nn.Module):
         self.nn_name = str(nn_name)
         
         # directory to save network checkpoints
-        self.file_checkpoint = os.path.join(self.algo_name, self.env_id+'_'+self.algo_name
+        if not os.path.exists(algo_name+'/'+env_id):
+            os.makedirs(algo_name+'/'+env_id)
+        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape and number of actions
