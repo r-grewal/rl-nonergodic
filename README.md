@@ -12,6 +12,7 @@ This repository will be submitted by mid-2021 as a component of ‘DATA5709: Cap
 Code tested both locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz CL16 RAM, Samsung 980 Pro and on the Artemis HPC at the University of Sydney.
 
 ## Algorithms Utilised
+* Deep Deterministic Policy Gradients (DDPG) ([Lillicrap et al. 2016](https://arxiv.org/pdf/1509.02971.pdf))
 * Twin Delayed Deep Deterministic Policy Gradients (TD3) ([Fujimoto et al. 2018](https://arxiv.org/pdf/1802.09477.pdf))
 * Soft Actor-Critic (SAC) ([Haarnoja et al. 2018a](https://arxiv.org/pdf/1801.01290.pdf), [Haarnoja et al. 2018b](https://arxiv.org/pdf/1812.05905.pdf), [Haarnoja et al. 2019](https://arxiv.org/pdf/1812.11103.pdf))
 
@@ -21,7 +22,7 @@ Code tested both locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz 
 
 
 ## Comments on Implementation
-TD3 appears to be well-optimised and functioning. Ready to parallelise across multiple GPUs to run 10 trials, each of 1e6 episodes per environment per loss function.
+TD3 appears to be well-optimised and functioning. Ready to parallelise across multiple GPUs on Artemis HPC to run 10 trials, each of 3e6 cumulative steps per environment per loss function.
 
 SAC currently requires tuning to transfer high CPU usage (8 threads at 100% utilisation) to the GPU. Algorithm also appears for certain environments to struggle in learning multi-modal solutions. Additionally, our use of true multi-dimensional stochastic Gaussian noise added to each policy action component inside every sample contained the mini-batch appears to reduce performance compared the simpler Gaussian sampling used by the overwhelming majority of available implementations.
 
@@ -33,7 +34,7 @@ This is because extremely important behaviour occurs during the pre-asymptotic p
 ## Acknowledgements
 The author acknowledge the facilities, and the scientific and technical assistance of the Sydney Informatics Hub at the University of Sydney and, in particular, access to the high performance computing facility Artemis.
 
-The python implementation has been significantly modified but is based on the original authors’ code along with insight from several other repositories. Below is an alphabetised list of sources.
+The python implementation has been significantly modified and written from scratch but is based on the original authors’ code along with insight from several other repositories. Below is an alphabetised list of sources.
 * [p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch]( https://github.com/p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch)
 * [philtabor/Actor-Critic-Methods-Paper-To-Code](https://github.com/philtabor/Actor-Critic-Methods-Paper-To-Code)
 * [rail-berkley/softlearning]( https://github.com/rail-berkeley/softlearning) 
