@@ -23,7 +23,7 @@ def truncation(estimated, target):
 
     return estimated, target
 
-def cauchy(estimated, target, scale=1):
+def cauchy(estimated, target, scale):
     """
     Cauchy loss function.
 
@@ -54,12 +54,17 @@ def nagy_algo(estimated, target, scale):
     """
     estimated = estimated.detach().clone()
     target = target.detach().clone()
-    arg = 1/(1 + ((target-estimated)/scale)**2)
+    arg = ((target-estimated)/scale)**2
+    arg2 = 1/(1 + arg)
+    error = T.sum(arg2) / arg2.shape[0]
+    inv_error = 1/error
+    
+    if inv_error >= 1:
+        scale_new = scale * T.sqrt(inv_error - 1).detach().cpu().numpy()
+    else:
+        scale_new = scale
 
-    error = T.sum(arg) / arg.shape[0]
-    scale_new = scale * T.sqrt(error - 1)
-
-    return scale_new.detach().cpu().numpy()
+    return scale_new
 
 def hypersurface(estimated, target):
     """
@@ -90,7 +95,7 @@ def loss_function(estimated, target, loss_type, scale):
         loss (float): loss value
     """
     if loss_type == "Cauchy":
-        loss = cauchy(estimated, target, scale=1)
+        loss = cauchy(estimated, target, scale)
     elif loss_type == "HSC":
         loss = hypersurface(estimated, target)
     elif loss_type == "Huber":
@@ -100,7 +105,8 @@ def loss_function(estimated, target, loss_type, scale):
     elif loss_type == "MSE":
         loss = F.mse_loss(estimated, target)
     elif loss_type =="TCauchy":
-        loss = cauchy(estimated, target, scale=1)
+        estimated, target = truncation(estimated, target)
+        loss = cauchy(estimated, target, scale)
 
     return loss
     
@@ -119,5 +125,5 @@ def plot_learning_curve(scores, filename_png):
         running_avg[i] = np.mean(scores[max(0, i-100):(i+1)])
 
     plt.plot(x, running_avg)
-    plt.title('Running average of previous 100 episodes')
+    plt.title('Moving average of trailing 100 episodes')
     plt.savefig(filename_png)
