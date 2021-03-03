@@ -36,7 +36,7 @@ def cauchy(estimated, target, scale):
         loss (float): loss value
     """    
     arg = ((target-estimated)/scale)**2
-    loss = T.log(1 + arg).sum()
+    loss = T.log(1 + arg).mean()
 
     return loss
 
@@ -78,7 +78,7 @@ def hypersurface(estimated, target):
         loss (float): loss value
     """    
     arg = (target-estimated)**2
-    loss = (T.sqrt(1 + arg) - 1).sum()
+    loss = (T.sqrt(1 + arg) - 1).mean() 
 
     return loss
 
