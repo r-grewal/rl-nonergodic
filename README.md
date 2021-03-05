@@ -9,7 +9,7 @@ Agents are trained on a diverse range of RL environments ranging from inverted d
 
 Loss functions used include MSE, MAE, Huber, Hypersurface Cost, Cauchy and Truncated Cauchy. Scale Parameter for Cauchy distribution is estimated using the Nagy algorithm and truncation is performed using heuristics. Non-ergodicity model is currently being tested in suitable environments. Furthermore, experiments will be conducted on varying the size of the replay buffer and incorporating n-step returns in continuous action spaces for the critic network.
 
-This repository will be submitted by the end of my final semester (mid-2021) as the key component of ‘DATA5709: Capstone Project – Individual’ in partial fulfilment of the requirements of the Masters of Data Science at the University of Sydney, Australia. 
+This repository will be submitted by the end of my final semester (mid-2021) as the key component of ‘DATA5709: Capstone Project – Individual’ in partial fulfilment of the requirements of the Master of Data Science at the University of Sydney, Australia. 
 
 Code tested locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz CL16 RAM, Samsung 980 Pro on both Windows 10 and Ubuntu 20.04 LTS, and on the CentOS 6.9 Linux-based Artemis HPC.
 
