@@ -11,7 +11,7 @@ Loss functions used include MSE, MAE, Huber, Hypersurface Cost, Cauchy and Trunc
 
 This repository will be submitted by the end of my final semester (mid-2021) as the key component of ‘DATA5709: Capstone Project – Individual’ in partial fulfilment of the requirements of the Masters of Data Science at the University of Sydney, Australia. 
 
-Code tested locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz CL16 RAM, Samsung 980 Pro on both Windows 10 and Ubuntu 20.04 LTS, and on the CentOS 6.9 Linux-based Artemis HPC at the University of Sydney.
+Code tested locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz CL16 RAM, Samsung 980 Pro on both Windows 10 and Ubuntu 20.04 LTS, and on the CentOS 6.9 Linux-based Artemis HPC.
 
 ## Algorithms Utilised
 * Deep Deterministic Policy Gradients (DDPG) ([Silver et al. 2014](http://proceedings.mlr.press/v32/silver14.pdf), [Lillicrap et al. 2016](https://arxiv.org/pdf/1509.02971.pdf))
@@ -25,11 +25,9 @@ Code tested locally on an AMD Ryzen 7 5800X, Nvidia RTX 3070, 64GB 3200MHz CL16 
 * Truncated Cauchy ([Guan et al. 2019](https://tongliang-liu.github.io/papers/TPAMITruncatedNMF.pdf))
 
 ## Comments on Implementation
-TD3 appears to be well-optimised and functioning. Ready to parallelise across multiple GPUs on Artemis HPC to run 10 trials, each of 3e6 cumulative steps per environment per loss function.
+After updating to PyTorch 1.8 w/ CUDA 11.1 and PyBullet 3.0.9 agents completely failing to learn in any environment. Link to SAC from main.py is also broken and needs eventual updating. TD3 multi-step learning requires several bug fixes and speed optimisations. Overall, nothing works anymore for the time being.
 
-SAC appears to functioning correctly but appears to struggle in OpenAI environments where large negative scores occur causing the algorithm to maximise only up to zero. This is likely due to the replay buffer containing minimal positive scores and hence algorithm fails to learn multi-modal solutions, no issues appear to occur with PyBullet environments. Regardless, code is almost ready to parallelise to run on Artemis HPC.
-
-Additionally, for SAC our use of true multi-dimensional stochastic Gaussian noise added appears to heavily reduce performance compared the simpler Gaussian sampling used by the overwhelming majority of implementations. Our method allows each sample state contained in the mini-batch to generate its own covariance matrix and hence each action dimension will have unique variance. We expect this to significantly improve the actor policy for complex environments. However the trade-off between learning in a fewer number of steps and each of step taking longer is unclear and environment dependent.
+See progress_log.MD for detailed update history.
 
 ## Potential Applications
 Existing systems control, portfolio management tool in finance, risk management systems all to some degree rely on the use of continuous expectation values (probability weighted averages) which are inherently and deeply flawed since literally no individual or institution ever experiences the ‘expected’ value. 
@@ -40,9 +38,10 @@ Given extremely important behaviour and events are very likely to occur during t
 The author acknowledge the facilities, and the scientific and technical assistance of the Sydney Informatics Hub at the University of Sydney and, in particular, access to the high performance computing facility Artemis.
 
 The python implementation has been significantly modified and written from scratch but is based on the original authors’ code along with insight from several other repositories. Below is an alphabetised list of sources.
+* [haarnoja/sac](https://github.com/haarnoja/sac)
+* [openai/spinningup](https://github.com/openai/spinningup)
 * [p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch]( https://github.com/p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch)
 * [philtabor/Actor-Critic-Methods-Paper-To-Code](https://github.com/philtabor/Actor-Critic-Methods-Paper-To-Code)
-* [openai/spinningup](https://github.com/openai/spinningup)
 * [rail-berkley/softlearning]( https://github.com/rail-berkeley/softlearning) 
 * [rlworkgroup/garage](https://github.com/rlworkgroup/garage)
 * [sfujim/TD3](https://github.com/sfujim/TD3/)
