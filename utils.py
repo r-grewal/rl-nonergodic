@@ -110,7 +110,7 @@ def loss_function(estimated, target, loss_type, scale):
 
     return loss
     
-def plot_learning_curve(scores, filename_png):
+def plot_learning_curve(score_log, filename_png):
     """
     Plot of 100 game running average for environment.
     
@@ -118,11 +118,12 @@ def plot_learning_curve(scores, filename_png):
         scores (list): list of final scores of each episode
         filename_png (directory): save path of plot
     """
-    running_avg = np.zeros(len(scores))
-    x = [i+1 for i in range(len(scores))]
+    length = len(score_log)
+    running_avg = np.zeros(length)
+    x = [i+1 for i in range(length)]
 
     for i in range(len(running_avg)):
-        running_avg[i] = np.mean(scores[max(0, i-100):(i+1)])
+        running_avg[i] = np.mean(score_log[max(0, i-100):(i+1)])
 
     plt.plot(x, running_avg)
     plt.title('Moving average of trailing 100 episodes')
