@@ -1,3 +1,4 @@
+from typing import runtime_checkable
 import numpy as np
 import matplotlib.pyplot as plt
 import torch as T
@@ -110,21 +111,86 @@ def loss_function(estimated, target, loss_type, scale):
 
     return loss
     
-def plot_learning_curve(score_log, filename_png):
+def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
     """
-    Plot of 100 game running average for environment.
+    Plot of 100 game running average score and critic loss for environment.
     
     Parameters:
-        scores (list): list of final scores of each episode
+        env_id (str): name of environment
+        input_dict (dict): dictionary of all execution details
+        trial_log (array): log of episode data
         filename_png (directory): save path of plot
     """
+    score_log = trial_log[:, 1]
     length = len(score_log)
-    running_avg = np.zeros(length)
-    x = [i+1 for i in range(length)]
+    critic_log = trial_log[:, 3:5].sum(axis=1)
 
-    for i in range(len(running_avg)):
-        running_avg[i] = np.mean(score_log[max(0, i-100):(i+1)])
+    # obtain cumulative steps for x-axis
+    steps = trial_log[:, 2]
+    cum_steps = np.zeros(length)
+    cum_steps[0] = steps[0]
+    for i in range(length-1):
+        cum_steps[i+1] = steps[i+1] + cum_steps[i]
+    
+    exp = int(len(str(int(np.max(cum_steps)))) - 1)
+    x_steps = np.round(cum_steps/10**(exp), 1)
+    
+    # ignore intial NaN critic loss when batch_size > buffer
+    idx, loss = 0, 0
+    while np.nan_to_num(loss) == 0:
+        loss = critic_log[idx]
+        idx += 1
 
-    plt.plot(x, running_avg)
-    plt.title('Moving average of trailing 100 episodes')
+    offset = np.max(idx - 1, 0)
+    score_log = score_log[offset:] 
+    critic_log = critic_log[offset:]
+
+    # calculate moving averages
+    trail = 100
+    running_avg1 = np.zeros(length, dtype=np.int)
+    for i in range(length-offset):
+        running_avg1[i+offset] = np.mean(score_log[max(0, i-trail):(i+1)])
+
+    running_avg2 = np.zeros(length)
+    for i in range(length-offset):
+        running_avg2[i+offset] = np.mean(critic_log[max(0, i-trail):(i+1)])
+
+    fig = plt.figure()
+    ax1 = fig.add_subplot(1,1,1, label='score')
+    ax2 = fig.add_subplot(1,1,1, label='critic', frame_on=False)
+
+    ax1.plot(x_steps, running_avg1, color='C0')
+    ax1.set_xlabel('Training Steps (1e'+str(exp)+')')
+    ax1.yaxis.tick_left()
+    ax1.set_ylabel('Average Score', color='C0')
+    ax1.yaxis.set_label_position('left')
+    ax1.tick_params(axis='y', colors='C0')
+
+    xmin, xmax = ax1.get_xlim()
+    ymin, ymax = ax1.get_ylim()
+    ax1.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
+
+    ax2.plot(x_steps, running_avg2, color='C3')
+    ax2.axes.get_xaxis().set_visible(False)
+    ax2.yaxis.tick_right()
+    ax2.set_ylabel('Average Critic Loss', color='C3')
+    ax2.yaxis.set_label_position('right')
+    ax2.tick_params(axis='y', colors='C3')
+    
+    ax1.set_title('Trailing 100 Episode Averages and 20% Partitions \n'+
+                  input_dict['algo']+':  \''+env_id+'\'  '+'('+'eg'+input_dict['ergodicity'][0]+
+                  ', '+input_dict['loss_fn']+', '+'m'+str(input_dict['buffer']/1e6)+
+                  ', '+'m'+str(input_dict['multi_steps'])+', '+'n'+str(input_dict['n_trials'])+
+                  ', '+'e'+str(int(input_dict['n_episodes']))+', '+'cs'+str(input_dict['n_cumsteps']/1e6)+')')
+    
+    # make vertical lines splitting every 20% of episodes and when TD3 begins learning
+    partitions = 0.2
+    for block in range(int(1/partitions-1)):
+        period = x_steps[int(np.min(length * partitions * (block + 1)))-1]
+        ax1.vlines(x=period, ymin=ymin, ymax=ymax, linestyles ="dashed", color='C2')
+
+    if input_dict['algo'] == 'TD3':
+        warmup = x_steps[np.min(np.where(cum_steps - input_dict['random_steps'] > 0))]
+        ax1.vlines(x=warmup, ymin=ymin, ymax=ymax, linestyles ="dashed", color='C7')
+
     plt.savefig(filename_png)
