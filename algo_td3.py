@@ -1,3 +1,5 @@
+import gym
+import pybullet_envs
 import numpy as np
 import torch as T
 from replay import ReplayBuffer
@@ -34,6 +36,8 @@ class Agent_td3():
             algo_name (str): name of algorithm
             erg (str): whether to assume ergodicity
         """
+        self.env_id = env_id
+        self.env = env
         self.input_dims = input_dims
         self.num_actions = int(num_actions)
         self.max_action = float(env.action_space.high[0])
@@ -50,6 +54,7 @@ class Agent_td3():
 
         self.memory = ReplayBuffer(max_size, self.input_dims, self.num_actions)
         self.batch_size = int(batch_size)
+
         self.policy_noise = policy_noise * self.max_action
         self.target_policy_noise = target_policy_noise * self.max_action
         self.target_policy_clip = target_policy_clip * self.max_action
@@ -76,11 +81,16 @@ class Agent_td3():
         self.critic_2_target = CriticNetwork(env_id, input_dims, layer1_dim, layer2_dim, num_actions, 
                                 self.max_action, lr_beta, algo_name, loss_type, nn_name='critic_2_target')
 
+        self.update_network_parameters(self.tau)
+
         batch_next_states = T.zeros((self.batch_size, *self.input_dims), requires_grad=True).to(self.actor.device)
         batch_rewards = T.zeros((self.batch_size, ), requires_grad=True).to(self.actor.device)
-        self.select_next_action(batch_next_states, multi='no')
+        self.select_next_action(batch_next_states, stoch='N/A', multi='No')
         self.single_step_target(batch_rewards, batch_next_states, None, self.erg)
-        self.update_network_parameters(self.tau)
+
+        self.env = gym.make(self.env_id)    # create again environment for multi-step
+        self.env = self.env.unwrapped
+        state = self.env.reset()
 
     def store_transistion(self, state, action, reward, next_state, done):
         """
@@ -122,15 +132,17 @@ class Agent_td3():
 
         return batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
 
-    def select_next_action(self, state, multi='no'):
+    def select_next_action(self, state, stoch, multi='No'):
         """
         Agent selects next action with added noise to each component or during warmup a random action taken.
 
         Parameters:
             state (list): current environment state
+            stoch: N/A
             multi (str): whether action is being taken as part of n-step targets
 
         Return:
+            numpy_next_action: action to be taken by agent in next step for gym
             next_action: action to be taken by agent in next step
         """
         # action = env.action_space.sample()
@@ -142,13 +154,13 @@ class Agent_td3():
             current_state = T.tensor(state, dtype=T.float).to(self.actor.device)
             mu += self.actor.forward(current_state)
 
-        action = T.clamp(mu, self.min_action, self.max_action)
-        next_action = action.detach().cpu().numpy()
+        next_action = T.clamp(mu, self.min_action, self.max_action)
+        numpy_next_action = next_action.detach().cpu().numpy()
 
-        if multi == 'no':
+        if multi == 'No':
             self.time_step += 1
         
-        return next_action
+        return numpy_next_action, next_action
 
     def single_step_target(self, batch_rewards, batch_next_states, batch_dones, erg='Yes'):
         """
@@ -185,7 +197,7 @@ class Agent_td3():
 
         return batch_target
 
-    def multi_step_target(self, batch_rewards, batch_next_states, batch_dones, env, n_step=1, erg='Yes'):
+    def multi_step_target(self, batch_rewards, batch_next_states, batch_dones, env, stoch, erg='Yes', n_step=1):
         """
         Multi-step target Q-values for mini-batch based on repeatedly propogating n times through policy network 
         using greedy action selection with added noise to simulate additional steps from the current environment state
@@ -196,8 +208,9 @@ class Agent_td3():
             batch_next_states (array): batch of next environment states
             batch_dones (array): batch of done flags
             env (gym object): gym environment
-            n_steps (int): number of steps of greedy action selection to take
+            stoch: N/A
             erg (str): whether to assume ergodicity
+            n_steps (int): number of steps of greedy action selection to take
         
         Returns:
             batch_target (array): twin duelling multi-step target Q-values
@@ -208,7 +221,7 @@ class Agent_td3():
         n_step = int(n_step)
 
         if n_step <= 1:
-            batch_target = self.single_step_target(batch_rewards, batch_next_states, batch_dones, erg)
+            batch_target = self.single_step_target(batch_rewards, batch_next_states, batch_dones, self.erg)
             return batch_target
 
         # create appropriately sized tensors for multi-step actions
@@ -216,41 +229,18 @@ class Agent_td3():
         batch_multi_next2_actions = T.zeros((self.batch_size, self.num_actions), requires_grad=True).to(self.actor.device)
         batch_multi_next1_rewards = batch_rewards.to(self.actor.device).clone()
         batch_multi_next1_states  = batch_next_states.to(self.actor.device).clone()
-        batch_multi_next2_states  = batch_next_states.to(self.actor.device).clone()
+        batch_multi_next2_states  = T.zeros((self.batch_size, *self.input_dims), requires_grad=True).to(self.actor.device)
         batch_multi_next1_dones = batch_dones.to(self.actor.device).clone()
-        sample = T.zeros((self.batch_size, *self.input_dims), requires_grad=True).to(self.actor.device)
+        sample = T.zeros((self.batch_size, *self.input_dims), requires_grad=False).to(self.actor.device)
 
         # print(batch_multi_next1_rewards, batch_multi_next1_rewards.grad)
 
+        # env = gym.make(self.env_id)          # create environment
+        # env = env.unwrapped
+        # state = env.reset()
+
         # multi-step actions per sample contained in mini-batch
         for steps in range(n_step - 1):
-            # print(batch_multi_next1_rewards, batch_multi_next1_rewards.grad)
-            for n in range(self.batch_size):
-                # while not batch_multi_next_dones[n].detach().cpu().numpy():
-                if batch_multi_next1_dones[n].detach().cpu().numpy() == False:
-                    # print(batch_multi_next1_states, batch_multi_next1_states.size())
-                    sample[n] = batch_multi_next1_states[n]
-                    # print(sample)
-
-                    # add random Gaussian noise to each actual component of next action with clipping 
-                    current_state = sample[n].detach().cpu().numpy()
-                    next_action = self.select_next_action(current_state, multi='yes')
-                    # print(next_action)
-                    batch_multi_next1_actions[n] = T.tensor(next_action, dtype=T.float).to(self.actor.device)
-                    # print(batch_multi_next1_actions)
-                    env.state = sample[n].detach().cpu().numpy()
-                    # print(env.state)
-                    # simulate next environement step
-                    next_next_state, multi_reward, multi_done, _ = env.step(next_action)
-                    # print(next_next_state)
-
-                    # add next reward and update done flags
-                    batch_multi_next1_rewards[n] += multi_reward * self.gamma**(steps + 1)
-                    batch_multi_next1_dones[n] = T.tensor(multi_done, dtype=T.bool)
-                    batch_multi_next2_states[n] = T.tensor(next_next_state, dtype=T.float).to(self.actor.device)
-
-            # print(batch_multi_next1_rewards, batch_multi_next1_rewards.grad)
-            # print(batch_multi_next1_actions, batch_multi_next1_actions.grad)
 
             # add random Gaussian noise to each target component of next action with clipping
             target_action_noise = T.tensor(np.random.normal(loc=0, scale=self.target_policy_noise, 
@@ -258,9 +248,37 @@ class Agent_td3():
             target_action_noise = target_action_noise.clamp(-self.target_policy_clip, self.target_policy_clip)
             target_action_noise = target_action_noise.to(self.actor.device)
 
+            # print(batch_multi_next1_rewards, batch_multi_next1_rewards.grad)
+
+            for n in range(self.batch_size):
+                if batch_multi_next1_dones[n].detach().cpu().numpy() == False:
+
+                    sample[n] = batch_multi_next1_states[n]
+                    current_state = sample[n].detach().cpu().numpy()
+                    # print(sample)
+                    
+                    next_action, next_action_torch = self.select_next_action(current_state, multi='Yes')
+                    # print(next_action)
+
+                    batch_multi_next1_actions[n] = next_action_torch.clone()
+                    # print(batch_multi_next1_actions)
+
+                    # simulate next environement step
+                    self.env.state = sample[n].detach().cpu().numpy()
+                    # print(self.env.state)
+                    next_next_state, multi_reward, multi_done, _ = self.env.step(next_action)
+                    # print(next_next_state)
+
+                    # add next discounted reward and update done flags
+                    batch_multi_next1_rewards[n] += multi_reward * self.gamma**(steps + 1)
+                    batch_multi_next1_dones[n] = T.tensor(multi_done, dtype=T.bool)
+                    batch_multi_next2_states[n] = T.tensor(next_next_state, dtype=T.float).to(self.actor.device)
+
+            # print(batch_multi_next1_rewards, batch_multi_next1_rewards.grad)
+            # print(batch_multi_next1_actions, batch_multi_next1_actions.grad)         
+
             batch_multi_next2_actions = self.actor_target.forward(batch_multi_next2_states)
             batch_multi_next2_actions = (batch_multi_next2_actions + target_action_noise).clamp(self.min_action, self.max_action)
-
             # print(batch_multi_next2_actions, batch_multi_next2_actions.grad)
 
             # obtain twin target Q-values for mini-batch and check terminal status
@@ -272,15 +290,14 @@ class Agent_td3():
             # twin duelling target critic values                
             batch_multi_q = T.min(q1_target, q2_target)
             batch_multi_target = batch_multi_next1_rewards + self.gamma**(steps + 1) * batch_multi_q
-
             # print(batch_multi_target, batch_multi_target.grad)
-        # print(batch_multi_next1_rewards, batch_multi_next1_rewards.grad)
+
         batch_target = batch_multi_target.view(self.batch_size, 1)
         # print(batch_target, batch_target.grad)
 
         return batch_target
 
-    def learn(self, batch_states, batch_actions, batch_target, loss_type, erg='Yes'):
+    def learn(self, batch_states, batch_actions, batch_target, loss_type, stoch='UVN', erg='Yes'):
         """
         Agent learning via TD3 algorithm with multi-step bootstrapping.
 
@@ -288,7 +305,9 @@ class Agent_td3():
             batch_next_states (array): batch of current environment states
             batch_actions (array): batch of continuous actions taken to arrive at states
             batch_target (array): twin duelling target Q-values
-            loss_type (str): Cauchy, Huber, MAE, MSE, TCauchy loss functions
+            loss_type (str): surrogate loss functions
+            stoch: N/A
+            erg (str): whether to assume ergodicity
 
         Returns:
             q1_loss: loss of critic 1
@@ -327,6 +346,7 @@ class Agent_td3():
         scale_1 = utils.nagy_algo(q1, batch_target, self.cauchy_scale)
         scale_2 = utils.nagy_algo(q2, batch_target, self.cauchy_scale)
         self.cauchy_scale = (scale_1 + scale_2)/2
+        
 
         # update actor and all target networks every interval
         if self.learn_step_cntr % self.actor_update_interval != 0:
