@@ -31,7 +31,7 @@ pickleshare==0.7.5
 Pillow==7.2.0
 pip-check==2.6
 prompt-toolkit==3.0.16
-pybullet==3.0.9
+pybullet==3.1.0
 pycparser==2.20
 pyglet==1.5.0
 Pygments==2.8.0
