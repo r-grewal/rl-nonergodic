@@ -38,9 +38,9 @@ class ActorNetwork(nn.Module):
         self.nn_name = str(nn_name)
         
         # directory to save network checkpoints
-        if not os.path.exists(algo_name+'/'+env_id):
-            os.makedirs(algo_name+'/'+env_id)
-        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
+        if not os.path.exists('./models/'+'/'+env_id):
+            os.makedirs('./models/'+'/'+env_id)
+        self.file_checkpoint = os.path.join('./models/'+'/'+env_id, self.env_id+'--'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape
@@ -55,7 +55,7 @@ class ActorNetwork(nn.Module):
 
     def forward(self, state):
         """
-        Forward propogation of state to obtain action psuedo-probabilities.
+        Forward propogation of state to obtain actor psuedo-probabilistic action.
 
         Paramters:
             state (list): current environment state
@@ -113,9 +113,9 @@ class CriticNetwork(nn.Module):
         self.nn_name = str(nn_name)
         
         # directory to save network checkpoints
-        if not os.path.exists(algo_name+'/'+env_id):
-            os.makedirs(algo_name+'/'+env_id)
-        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
+        if not os.path.exists('./models/'+'/'+env_id):
+            os.makedirs('./models/'+'/'+env_id)
+        self.file_checkpoint = os.path.join('./models/'+'/'+env_id, self.env_id+'--'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape and number of actions
