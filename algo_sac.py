@@ -1,3 +1,5 @@
+import gym
+import pybullet_envs
 import numpy as np
 import torch as T
 from replay import ReplayBuffer
@@ -10,7 +12,8 @@ class Agent_sac():
     """                             
     def __init__(self, env_id, env, input_dims, num_actions, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, 
             tau=0.005, gamma=0.99, actor_update_interval=1, max_size=1e6, layer1_dim=256, layer2_dim=256, 
-            batch_size=256, reparam_noise=1e-6, reward_scale=1, loss_type ='MSE', cauchy_scale=0.420, algo_name='SAC'):
+            batch_size=256, reparam_noise=1e-6, reward_scale=1, loss_type ='MSE', cauchy_scale=0.420, 
+            stoch='UVN', algo_name='SAC', erg='Yes'):
         """
         Intialise actor-critic networks and experience replay buffer.
 
@@ -33,6 +36,8 @@ class Agent_sac():
             cauchy_scale (float>0): intialisation value for Cauchy scale parameter
             algo_name (str): name of algorithm
         """
+        self.env_id = env_id
+        self.env = env
         self.input_dims = input_dims
         self.num_actions = int(num_actions)
         self.max_action = float(env.action_space.high[0])
@@ -48,15 +53,18 @@ class Agent_sac():
 
         self.memory = ReplayBuffer(max_size, self.input_dims, self.num_actions)
         self.batch_size = int(batch_size)
-        self.loss_type = str(loss_type)
-        self.cauchy_scale = cauchy_scale
 
         self.reparam_noise = reparam_noise
         self.reward_scale = reward_scale
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
         self.log_alpha = T.zeros((1,), requires_grad=True)
         self.temp_optimiser = T.optim.Adam([self.log_alpha], lr=self.lr_kappa)
         self.entropy_target = -self.num_actions
-        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+
+        self.loss_type = str(loss_type)
+        self.cauchy_scale = cauchy_scale
+        self.stoch = str(stoch)
+        self.erg = str(erg)
 
         self.actor = ActorNetwork(env_id, input_dims, layer1_dim, layer2_dim, num_actions, self.max_action, 
                             self.reparam_noise,lr_alpha, algo_name, loss_type, nn_name='actor')
@@ -75,29 +83,20 @@ class Agent_sac():
 
         self.update_network_parameters(self.tau)
 
-    def select_next_action(self, state):
-        """
-        Agent selects next action with sampled form stochastic policy.
+        batch_next_states = T.zeros((self.batch_size, *self.input_dims), requires_grad=True).to(self.actor.device)
+        batch_rewards = T.zeros((self.batch_size, ), requires_grad=True).to(self.actor.device)
+        # self.select_next_action(batch_next_states, self.stoch, multi='No')
+        self.single_step_target(batch_rewards, batch_next_states, None, self.stoch, self.erg)
 
-        Paramters:
-            state (list): current environment state 
-
-        Return:
-            next_action: action to be taken by agent in next step
-        """        
-        # make single state a list for stochastic sampling then select state action
-        current_state = T.tensor([state], dtype=T.float).to(self.actor.device)
-        # action, _ = self.actor.stochastic_mv_gaussian(current_state)
-        action, _ = self.actor.stochastic_gaussian(current_state)
-        next_action = action.detach().cpu().numpy()[0]
-
-        return next_action
+        self.env = gym.make(self.env_id)    # create again environment for multi-step
+        self.env = self.env.unwrapped
+        state = self.env.reset()
 
     def store_transistion(self, state, action, reward, next_state, done):
         """
         Store a transistion to the buffer containing a total up to max_size.
 
-        Paramters:
+        Parameters:
             state (list): current environment state
             action (list): continuous actions taken to arrive at current state
             reward (float): reward from current environment state
@@ -106,40 +105,84 @@ class Agent_sac():
         """
         self.memory.store_exp(state, action, reward, next_state, done)
 
-    def learn(self, loss_type):
+    def get_mini_batch(self, batch_size):
         """
-        Agent learning via SAC algorithm.
+        Uniform sampling from replay buffer and send to GPU.
 
         Paramters:
-            loss_type (str): Cauchy, Huber, MAE, MSE, TCauchy loss functions
+            batch_size (int): mini-batch size
 
         Returns:
-            q1_loss: loss of critic 1
-            q2_loss: loss of critic 2
-            actor_loss: loss of actor
-            scale_1: effective Cauchy scale parameter for critic 1 from Nagy algorithm
-            scale_2: effective Cauchy scale parameter for critic 2 from Nagy algorithm
-            logalpha: log entropy adjustment factor (temperature)
+            states (array): batch of environment states
+            actions (array): batch of continuous actions taken to arrive at states
+            rewards (array): batch of rewards from current states
+            next_states (array): batch of next environment states
+            dones (array): batch of done flags
         """
-        # return nothing till batch size less than replay buffer
-        if self.memory.mem_idx < self.batch_size:
-            return np.nan, np.nan, np.nan, np.nan, np.nan, self.log_alpha.detach().cpu().numpy()
-
-        # uniform sampling from replay buffer
+        if self.memory.mem_idx < self.batch_size + 1:
+            return np.nan, np.nan, np.nan, np.nan, np.nan
+            
         states, actions, rewards, next_states, dones = self.memory.sample_exp(self.batch_size)
 
         batch_states = T.tensor(states, dtype=T.float).to(self.critic_1.device)
         batch_actions = T.tensor(actions, dtype=T.float).to(self.critic_1.device)
         batch_rewards = T.tensor(rewards, dtype=T.float).to(self.critic_1.device)
         batch_next_states = T.tensor(next_states, dtype=T.float).to(self.critic_1.device)
-        batch_dones = T.tensor(dones, dtype=T.bool).to(self.critic_1.device)
-        self.log_alpha = self.log_alpha.to(self.critic_1.device)
+        batch_dones = T.tensor(dones, dtype=T.bool).to(self.critic_1.device) 
 
+        return batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
+
+    def select_next_action(self, state, stoch='UVN', multi='No'):
+        """
+        Agent selects next action with added noise to each component or during warmup a random action taken.
+
+        Parameters:
+            state (list): current environment state
+            stoch (str): stochastic policy sampling via 'B', 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            multi: N/A
+
+        Return:
+            numpy_next_action: action to be taken by agent in next step for gym
+            next_action: action to be taken by agent in next step
+        """        
+        # make single state a list for stochastic sampling then select state action
+        # print(state)
+        current_state = T.tensor([state], dtype=T.float).to(self.actor.device)
+        # print(current_state)
+
+        if self.stoch is not 'MVN':
+            next_action, _ = self.actor.stochastic_uv(current_state, self.stoch)
+        else:
+            next_action, _ = self.actor.stochastic_mv_gaussian(current_state)
+        
+        numpy_next_action = next_action.detach().cpu().numpy()[0]
+        # print(next_action)
+        # print(numpy_next_action)
+
+        return numpy_next_action, next_action
+    
+    def single_step_target(self, batch_rewards, batch_next_states, batch_dones, stoch='UVN', erg='Yes'):
+        """
+        Standard single step target Q-values for mini-batch.
+
+        Parameters:
+            batch_rewards (array): batch of rewards from current states
+            batch_next_states (array): batch of next environment states
+            batch_dones (array): batch of done flags
+            stoch (str): stochastic policy sampling via 'B', 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            erg (str): whether to assume ergodicity
+        
+        Returns:
+            batch_target (array): twin duelling target Q-values
+        """
         # sample next stochastic action policy for target critic network based on mini-batch
-        batch_next_stoc_actions, batch_next_logprob_actions = \
+        if self.stoch is not 'MVN':
+            batch_next_stoc_actions, batch_next_logprob_actions = \
+                                        self.actor.stochastic_uv(batch_next_states, self.stoch)
+        else:
+            batch_next_stoc_actions, batch_next_logprob_actions = \
                                         self.actor.stochastic_mv_gaussian(batch_next_states)
-        # batch_next_stoc_actions, batch_next_logprob_actions = \
-        #                                 self.actor.stochastic_gaussian(batch_next_states)
+
         batch_next_logprob_actions = batch_next_logprob_actions.view(-1)
 
         # obtain twin next soft target Q-values for mini-batch and check terminal status
@@ -149,10 +192,66 @@ class Agent_sac():
         q1_target, q2_target = q1_target.view(-1), q2_target.view(-1)
     
         # twin duelling soft target critic values
+        self.log_alpha = self.log_alpha.to(self.device)
         soft_q_target = T.min(q1_target, q2_target)
         soft_value = soft_q_target - self.log_alpha.exp() * batch_next_logprob_actions
         target = self.reward_scale * batch_rewards + self.gamma * soft_value
-        target = target.view(self.batch_size, -1)
+        batch_target = target.view(self.batch_size, -1)
+
+        return batch_target
+
+    def multi_step_target(self, batch_rewards, batch_next_states, batch_dones, env, stoch='UVN', erg='Yes', n_step=1):
+        """
+        Multi-step target Q-values for mini-batch based on repeatedly propogating n times through policy network 
+        using greedy action selection with added noise to simulate additional steps from the current environment state
+        and the targets then become: \Sum(\gamma^{k} * R_{k+1}, k=0, n-1) + \gamma^{n}*min(Q_1, Q2). 
+
+        Parameters:
+            batch_rewards (array): batch of rewards from current states
+            batch_next_states (array): batch of next environment states
+            batch_dones (array): batch of done flags
+            env (gym object): gym environment
+            stoch (str): stochastic policy sampling via 'B', 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            erg (str): whether to assume ergodicity
+            n_steps (int): number of steps of greedy action selection to take
+        
+        Returns:
+            batch_target (array): twin duelling multi-step target Q-values
+        """
+        if self.memory.mem_idx < self.batch_size + 10:    # add +10 offset to account for ...
+                return np.nan
+        
+        n_step = int(n_step)
+
+        if n_step <= 1:
+            batch_target = self.single_step_target(batch_rewards, batch_next_states, batch_dones, self.stoch, self.erg)
+            return batch_target
+    
+        print('MULTI-STEP NOT YET IMPLEMENTED')
+
+    def learn(self, batch_states, batch_actions, batch_target, loss_type, stoch='UVN', erg='Yes'):
+        """
+        Agent learning via SAC algorithm.
+
+        Paramters:
+            batch_next_states (array): batch of current environment states
+            batch_actions (array): batch of continuous actions taken to arrive at states
+            batch_target (array): twin duelling target Q-values
+            loss_type (str): surrogate loss functions
+            stoch: N/A
+            erg (str): whether to assume ergodicity
+
+        Returns:
+            q1_loss: loss of critic 1
+            q2_loss: loss of critic 2
+            actor_loss: loss of actor
+            scale_1: effective Cauchy scale parameter for critic 1 from Nagy algorithm
+            scale_2: effective Cauchy scale parameter for critic 2 from Nagy algorithm
+            logtemp: log entropy adjustment factor (temperature)
+        """
+        # return nothing till batch size less than replay buffer
+        if self.memory.mem_idx < self.batch_size + 10:
+            return np.nan, np.nan, np.nan, np.nan, np.nan, self.log_alpha.detach().cpu().numpy()
 
         # obtain current twin soft Q-values for mini-batch
         q1 = self.critic_1.forward(batch_states, batch_actions)
@@ -162,8 +261,8 @@ class Agent_sac():
         self.critic_1.optimizer.zero_grad()
         self.critic_2.optimizer.zero_grad()
 
-        q1_loss = utils.loss_function(q1, target, self.loss_type, self.cauchy_scale)
-        q2_loss = utils.loss_function(q2, target, self.loss_type, self.cauchy_scale)
+        q1_loss = utils.loss_function(q1, batch_target, self.loss_type, self.cauchy_scale)
+        q2_loss = utils.loss_function(q2, batch_target, self.loss_type, self.cauchy_scale)
     
         critic_loss = 0.5 * (q1_loss + q2_loss)
         critic_loss.backward(retain_graph=True)
@@ -174,8 +273,8 @@ class Agent_sac():
         self.learn_step_cntr += 1
 
         # updates Cauchy scale parameter using the Nagy algorithm
-        scale_1 = utils.nagy_algo(q1, target, self.cauchy_scale)
-        scale_2 = utils.nagy_algo(q2, target, self.cauchy_scale)
+        scale_1 = utils.nagy_algo(q1, batch_target, self.cauchy_scale)
+        scale_2 = utils.nagy_algo(q2, batch_target, self.cauchy_scale)
         self.cauchy_scale = (scale_1 + scale_2)/2
 
         # update actor, temperature and target critic networks every interval
@@ -185,10 +284,13 @@ class Agent_sac():
             return numpy_q1_loss, numpy_q2_loss, np.nan, scale_1, scale_2, np.nan
 
         # sample current stochastic action policy for critic network based on mini-batch
-        batch_stoc_actions, batch_logprob_actions = \
+        if self.stoch is not 'MVN':
+            batch_stoc_actions, batch_logprob_actions = \
+                                        self.actor.stochastic_uv(batch_states, self.stoch)
+        else:
+            batch_stoc_actions, batch_logprob_actions = \
                                         self.actor.stochastic_mv_gaussian(batch_states)
-        # batch_stoc_actions, batch_logprob_actions = \
-        #                                   self.actor.stochastic_gaussian(batch_states)
+
         batch_logprob_actions = batch_logprob_actions.view(-1)
 
         # obtain twin current soft-Q values for mini-batch using stochastic sampling
@@ -238,20 +340,16 @@ class Agent_sac():
 
     def save_models(self):
         """
-        Saves all 5 networks.
+        Saves all 3 networks.
         """
         self.actor.save_checkpoint()
         self.critic_1.save_checkpoint()
         self.critic_2.save_checkpoint()
-        self.critic_1_target.save_checkpoint()
-        self.critic_2_target.save_checkpoint()
 
     def load_models(self):
         """
-        Loads all 5 networks.
+        Loads all 3 networks.
         """
         self.actor.load_checkpoint()
         self.critic_1.load_checkpoint()
         self.critic_2.load_checkpoint()
-        self.critic_1_target.load_checkpoint()
-        self.critic_2_target.load_checkpoint()
