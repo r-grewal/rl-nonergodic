@@ -1,6 +1,7 @@
 from typing import runtime_checkable
 import numpy as np
 import matplotlib.pyplot as plt
+from numpy.core.fromnumeric import partition
 import torch as T
 import torch.nn.functional as F
 
@@ -67,6 +68,25 @@ def nagy_algo(estimated, target, scale):
 
     return scale_new
 
+
+def correntropy(estimated, target):
+    """
+    Correntropy-Induced Metric loss functions with empirically estimated kernel size 
+    taken as the average reconstruction error.
+
+    Parameters:
+        estimated (list): current Q-values
+        target (list): Q-values from mini-batch
+
+    Returns:
+        loss (float): loss value
+    """   
+    arg = (target-estimated)**2
+    kernel = arg.detach().clone().mean()
+    loss = (1 - T.exp(-arg/(2 * kernel**2)) / T.sqrt(2 * np.pi * kernel)).mean() 
+
+    return loss
+
 def hypersurface(estimated, target):
     """
     Hypersurface cost based loss function.
@@ -83,6 +103,13 @@ def hypersurface(estimated, target):
 
     return loss
 
+def mse(estimated, target, exp=0):
+
+    arg = (target-estimated)**(2 + exp)
+    loss = arg.mean()
+
+    return loss
+
 def loss_function(estimated, target, loss_type, scale):
     """
     Use the Nagy alogrithm to estimate the Cauchy scale paramter based on residual errors.
@@ -90,13 +117,15 @@ def loss_function(estimated, target, loss_type, scale):
     Parameters:
         estimated (list): current Q-values
         target (list): Q-values from mini-batch
-        loss_type (str): Cauchy, HSC, Huber, MAE, MSE, TCauchy loss functions
+        loss_type (str): alphabetised loss functions
         
     Returns:
         loss (float): loss value
     """
     if loss_type == "Cauchy":
         loss = cauchy(estimated, target, scale)
+    elif loss_type == "CIM":
+        loss = correntropy(estimated, target)
     elif loss_type == "HSC":
         loss = hypersurface(estimated, target)
     elif loss_type == "Huber":
@@ -108,12 +137,18 @@ def loss_function(estimated, target, loss_type, scale):
     elif loss_type =="TCauchy":
         estimated, target = truncation(estimated, target)
         loss = cauchy(estimated, target, scale)
+    elif loss_type == "X4":
+        loss = mse(estimated, target, 2)
+    elif loss_type == "X6":
+        loss = mse(estimated, target, 4)
+    elif loss_type == "X8":
+        loss = mse(estimated, target, 6)
 
     return loss
     
 def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
     """
-    Plot of 100 game running average score and critic loss for environment.
+    Plot of game running average score and critic loss for environment.
     
     Parameters:
         env_id (str): name of environment
@@ -146,7 +181,7 @@ def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
     critic_log = critic_log[offset:]
 
     # calculate moving averages
-    trail = 100
+    trail = input_dict['trail']
     running_avg1 = np.zeros(length, dtype=np.int)
     for i in range(length-offset):
         running_avg1[i+offset] = np.mean(score_log[max(0, i-trail):(i+1)])
@@ -177,20 +212,22 @@ def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
     ax2.yaxis.set_label_position('right')
     ax2.tick_params(axis='y', colors='C3')
     
-    ax1.set_title('Trailing 100 Episode Averages and 20% Partitions \n'+
-                  input_dict['algo']+':  \''+env_id+'\'  '+'('+'eg'+input_dict['ergodicity'][0]+
-                  ', '+input_dict['loss_fn']+', '+'m'+str(input_dict['buffer']/1e6)+
-                  ', '+'m'+str(input_dict['multi_steps'])+', '+'n'+str(input_dict['n_trials'])+
-                  ', '+'e'+str(int(input_dict['n_episodes']))+', '+'cs'+str(input_dict['n_cumsteps']/1e6)+')')
-    
-    # make vertical lines splitting every 20% of episodes and when TD3 begins learning
-    partitions = 0.2
+    # make vertical lines splitting fractions of total episodes
+    partitions = 0.25
     for block in range(int(1/partitions-1)):
         period = x_steps[int(np.min(length * partitions * (block + 1)))-1]
         ax1.vlines(x=period, ymin=ymin, ymax=ymax, linestyles ="dashed", color='C2')
 
-    if input_dict['algo'] == 'TD3':
-        warmup = x_steps[np.min(np.where(cum_steps - input_dict['random_steps'] > 0))]
-        ax1.vlines(x=warmup, ymin=ymin, ymax=ymax, linestyles ="dashed", color='C7')
+    # make vertical line when TD3 begins learning
+    # if input_dict['algo'] == 'TD3':
+    #     warmup = x_steps[np.min(np.where(cum_steps - input_dict['random_steps'] > 0))]
+    #     ax1.vlines(x=warmup, ymin=ymin, ymax=ymax, linestyles ="dashed", color='C7')
 
-    plt.savefig(filename_png)
+    ax1.set_title('Trailing '+str(int(input_dict['trail']))+' Episode Averages and '+
+                str(partitions)[2:4]+'% Partitions \n'+
+                input_dict['algo']+': \''+env_id+'\' '+
+                '('+'g'+input_dict['ergodicity'][0]+', '+input_dict['loss_fn']+', '+
+                'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+
+                ', ''e'+str(int(length))+')')
+
+    plt.savefig(filename_png, bbox_inches='tight', dpi=600, format='png')
