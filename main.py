@@ -11,10 +11,11 @@ from utils import plot_learning_curve, plot_trial_curve
 gym_envs = [# 'LunarLanderContinuous-v2', 'BipedalWalker-v3', 'BipedalWalkerHardcore-v3',
             # 'CartPoleContinuousBulletEnv-v0', 'InvertedPendulumBulletEnv-v0',
             # 'InvertedDoublePendulumBulletEnv-v0', 'KukaBulletEnv-v0', 
-            'HopperBulletEnv-v0', 'Walker2DBulletEnv-v0', 'HalfCheetahBulletEnv-v0', 
-            'AntBulletEnv-v0', 'HumanoidBulletEnv-v0']
+            'HopperBulletEnv-v0', 'Walker2DBulletEnv-v0', # 'HalfCheetahBulletEnv-v0', 
+            'AntBulletEnv-v0', 'HumanoidBulletEnv-v0'
+            ]
 
-ENV = 4                     # select environment
+ENV = 3                     # select environment
 env_id = gym_envs[ENV]          
 env = gym.make(env_id)      # create environment
 env = env.unwrapped         # allow access to setting enviroment state and remove episode step limit
@@ -23,7 +24,7 @@ warmup = np.array([1e3 for envs in range(len(gym_envs))])
 warmup[-3:] *= 10
 
 # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
-critic_loss = ['MSE']
+critic_loss = ['Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy']
 
 for loss_fn in critic_loss:
 
@@ -46,7 +47,7 @@ for loss_fn in critic_loss:
             'buffer': 1e6,              # maximum transistions in experience replay buffer
             'multi_steps': 1,           # bootstrapping of target critic values and rewards
             'n_trials': 3,              # number of total trials
-            'n_cumsteps': 1e3,          # maximum cumulative steps per trial regardless of episodes
+            'n_cumsteps': 2e5,          # maximum cumulative steps per trial regardless of episodes
             'algo': 'TD3'               # model 'TD3' or 'SAC'
             }  
 
@@ -138,14 +139,14 @@ for loss_fn in critic_loss:
 
         plot_learning_curve(env_id, inputs, trial_log[round], directory+'.png')
 
-# truncate log up to maximum episodes
-count_episodes = []
-for trial in range(inputs['n_trials']):
-    count_episodes.append(np.min(np.where(trial_log[trial, :, 0] == 0)))
-max_episode = np.max(count_episodes) 
-trial_log = trial_log[:, :max_episode, :]
+    # truncate log up to maximum episodes
+    count_episodes = []
+    for trial in range(inputs['n_trials']):
+        count_episodes.append(np.min(np.where(trial_log[trial, :, 0] == 0)))
+    max_episode = np.max(count_episodes) 
+    trial_log = trial_log[:, :max_episode, :]
 
-# if inputs['n_trials'] > 1:
-#     plot_trial_curve(env_id, inputs, trial_log, directory+'_trial.png')
+    # if inputs['n_trials'] > 1:
+    #     plot_trial_curve(env_id, inputs, trial_log, directory+'_trial.png')
 
-np.save(directory+'.npy', trial_log)
+    np.save(directory+'.npy', trial_log)
