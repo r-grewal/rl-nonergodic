@@ -76,14 +76,13 @@ class ActorNetwork(nn.Module):
 
         return moments
     
-    def stochastic_uv(self, state, batch_size, stoch='UVN'):
+    def stochastic_uv(self, state, stoch='UVN'):
         """ 
         Stochastic action selection sampled from several unbounded univarite distirbution
         using the reparameterisation trick from https://arxiv.org/pdf/1312.6114.pdf.
         
         Parameters:
             state (list): current environment state or mini-batch
-            batch_size (int): mini-batch size
             stoch (str): stochastic policy 'LAP' 'MVN', 'ST' or 'UVN' distribution
 
         Returns:
@@ -97,7 +96,7 @@ class ActorNetwork(nn.Module):
         if stoch == 'UVN':
             probabilities = distibution.normal.Normal(loc=mu, scale=scale)
         elif stoch == 'ST':
-            probabilities = distibution.studentT.StudentT(batch_size-1, loc=mu, scale=scale)
+            probabilities = distibution.studentT.StudentT(mu.shape[0]-1, loc=mu, scale=scale)
         else:
             probabilities = distibution.laplace.Laplace(loc=mu, scale=scale)
 
