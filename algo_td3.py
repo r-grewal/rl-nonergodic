@@ -11,24 +11,25 @@ class Agent_td3():
     TD3 agent algorithm based on https://arxiv.org/pdf/1802.09477.pdf.
     """
     def __init__(self, env_id, env, lr_alpha=0.001, lr_beta=0.001, tau=0.005, layer1_dim=400, layer2_dim=300, 
-                 cauchy_scale_1=0.420, cauchy_scale_2=0.420, gamma=0.99, erg='Yes', loss_type ='MSE', 
-                 max_size=1e6, algo_name='TD3', actor_update_interval=2, batch_size=100, warmup=1000,
-                 policy_noise=0.1, target_policy_noise=0.2, target_policy_clip=0.5):
+                 cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=1000, gamma=0.99, erg='Yes', loss_type ='MSE', 
+                 max_size=1e6, algo_name='TD3', actor_update_interval=2,  batch_size=100, policy_noise=0.1, 
+                 target_policy_noise=0.2, target_policy_clip=0.5):
         """
         Intialise actor-critic networks and experience replay buffer.
 
         Parameters:
             env_id (string): name of gym environment
             env (gym object): gym environment
-            lr_alpha (float): actor learning rate of Adam optimiser
-            lr_beta (float): critic learning rate of Adam optimiser
+            lr_alpha (float>0): actor learning rate of Adam optimiser
+            lr_beta (float>0): critic learning rate of Adam optimiser
             tau (float<=1): Polyak averaging for target network parameter updates
             layer1_dim (int): size of first fully connected layer
             layer2_dim (int): size of second fully connected layer
             cauchy_scale (float>0): intialisation value for Cauchy scale parameter
+            warmup (int): intial random warmup steps to generate random seed
             gamma (float<=1): discount factor
             erg (str): whether to assume ergodicity
-            loss_type (str): Cauchy, CE, HSC, Huber, MAE, MSE, TCauchy loss functions
+            loss_type (str): critic loss functions
             max_size (int): maximum size of replay buffer
             algo_name (str): name of algorithm
             actor_update_interval (int): actor policy network update frequnecy
@@ -53,6 +54,7 @@ class Agent_td3():
         self.tau = tau
         self.cauchy_scale_1 = cauchy_scale_1
         self.cauchy_scale_2 = cauchy_scale_2
+        self.warmup = int(warmup)
         self.gamma = gamma
         self.erg = str(erg)
         self.loss_type = str(loss_type)
@@ -61,7 +63,7 @@ class Agent_td3():
         self.actor_update_interval = int(actor_update_interval)
         self.batch_size = int(batch_size)
 
-        self.warmup = int(warmup)
+        # scale standard deviations by max continous action
         self.policy_noise = policy_noise * self.max_action
         self.target_policy_noise = target_policy_noise * self.max_action
         self.target_policy_clip = target_policy_clip * self.max_action
@@ -147,7 +149,6 @@ class Agent_td3():
             numpy_next_action: action to be taken by agent in next step for gym
             next_action: action to be taken by agent in next step
         """
-        # action = env.action_space.sample()
         action_noise = T.tensor(np.random.normal(loc=0, scale=self.policy_noise, 
                             size=(self.num_actions,)), dtype=T.float)
         mu = action_noise.to(self.actor.device)
@@ -218,7 +219,7 @@ class Agent_td3():
             batch_target (array): twin duelling multi-step target Q-values
         """
         if self.memory.mem_idx < self.batch_size + 10:    # add +10 offset to account for ...
-                return np.nan
+            return np.nan
         
         n_step = int(n_step)
 
@@ -336,9 +337,11 @@ class Agent_td3():
 
         q1_loss = utils.loss_function(q1, batch_target, self.loss_type, self.cauchy_scale_1, kernel_1)
         q2_loss = utils.loss_function(q2, batch_target, self.loss_type, self.cauchy_scale_2, kernel_2)
+        
         critic_loss = q1_loss + q2_loss 
         critic_loss.backward()
         # print(q1_loss, q2_loss, critic_loss)
+        
         self.critic_1.optimizer.step()
         self.critic_2.optimizer.step()
 
