@@ -18,7 +18,7 @@ gym_envs = [# 'LunarLanderContinuous-v2', 'BipedalWalker-v3', 'BipedalWalkerHard
 ENV = 0                     # select environment
 env_id = gym_envs[ENV]    
 env = gym.make(env_id)
-# env = env.unwrapped         # allow access to setting enviroment state and remove episode step limit
+env = env.unwrapped         # allow access to setting enviroment state and remove episode step limit
 
 warmup = np.array([1e3 for envs in range(len(gym_envs))])
 warmup[-2:] *= 10
@@ -43,35 +43,37 @@ for loss_fn in surrogate_critic_loss:
             'discount': 0.99,               # discount factor for successive step
             'trail': 50,                    # moving average count of episode scores for model saving and plots
             'ergodicity': 'Yes',            # assume ergodicity 'Yes' or 'No'  
-            'loss_fn': loss_fn,                  # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
+            'loss_fn': loss_fn,             # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
             'buffer': 1e6,                  # maximum transistions in experience replay buffer
             'multi_steps': 1,               # bootstrapping of target critic values and rewards
             'n_trials': 3,                  # number of total trials
-            'n_cumsteps': 4e4,              # maximum cumulative steps per trial
+            'n_cumsteps': 3e4,              # maximum cumulative steps per trial
             'algo': 'SAC'                   # model 'TD3' or 'SAC'
             }  
-
-    if inputs['algo'] == 'TD3':
-        batch_size = 100
-        agent = Agent_td3(env_id, env, lr_alpha=0.001, lr_beta=0.001, tau=5e-3, layer1_dim=400, layer2_dim=300, 
-                          cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=inputs['random'], gamma=inputs['discount'], 
-                          erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], max_size=inputs['buffer'], 
-                          algo_name=inputs['algo'], actor_update_interval=2, batch_size=batch_size,  
-                          policy_noise=inputs['policy_noise'], target_policy_noise=inputs['target_policy_noise'], 
-                          target_policy_clip=inputs['target_policy_clip'])                
-
-    elif inputs['algo'] == 'SAC':
-        batch_size = 256
-        agent = Agent_sac(env_id, env, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, tau=5e-3, layer1_dim=256, 
-                          layer2_dim=256, cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=inputs['random'],
-                          gamma=inputs['discount'], erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], 
-                          max_size=inputs['buffer'], algo_name=inputs['algo'], actor_update_interval=1, batch_size=batch_size,
-                          reparam_noise=1e-6, reward_scale=inputs['r_scale'], stoch=inputs['s_dist'])
 
     trial_log = np.zeros((inputs['n_trials'], int(inputs['n_cumsteps']), 11))
 
     for round in range(inputs['n_trials']):
-        # agent.load_models()    # load existing actor-critic network parameters
+
+        if inputs['algo'] == 'TD3':
+            batch_size = 100
+            agent = Agent_td3(env_id, env, lr_alpha=0.001, lr_beta=0.001, tau=5e-3, layer1_dim=400, layer2_dim=300, 
+                            cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=inputs['random'], gamma=inputs['discount'], 
+                            erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], max_size=inputs['buffer'], 
+                            algo_name=inputs['algo'], actor_update_interval=2, batch_size=batch_size,  
+                            policy_noise=inputs['policy_noise'], target_policy_noise=inputs['target_policy_noise'], 
+                            target_policy_clip=inputs['target_policy_clip'])                
+
+        elif inputs['algo'] == 'SAC':
+            batch_size = 256
+            agent = Agent_sac(env_id, env, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, tau=5e-3, layer1_dim=256, 
+                            layer2_dim=256, cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=inputs['random'],
+                            gamma=inputs['discount'], erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], 
+                            max_size=inputs['buffer'], algo_name=inputs['algo'], actor_update_interval=1, 
+                            batch_size=batch_size, reparam_noise=1e-6, reward_scale=inputs['r_scale'], stoch=inputs['s_dist'])
+
+        # agent.load_models()    # load existing actor-critic network parameters to continue learning
+
         best_score = env.reward_range[0]    # set intial best to worst possible reward
         score_log = []
         cum_steps, episode = 0, 1
@@ -83,7 +85,6 @@ for loss_fn in surrogate_critic_loss:
             step, score =  0, 0
 
             while not done:
-                # action = env.action_space.sample()
                 action, _ = agent.select_next_action(state, inputs['s_dist'], multi='No')
                 next_state, reward, done, info = env.step(action)
                 env.state = next_state
@@ -146,8 +147,8 @@ for loss_fn in surrogate_critic_loss:
     max_episode = np.max(count_episodes) 
     trial_log = trial_log[:, :max_episode, :]
 
+    np.save(directory+'.npy', trial_log)
+
     # plot combined trials
     if inputs['n_trials'] > 1:
         plot_trial_curve(env_id, inputs, trial_log, directory+'_combined.png')
-
-    np.save(directory+'.npy', trial_log)
