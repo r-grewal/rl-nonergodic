@@ -18,7 +18,7 @@ gym_envs = [# 'LunarLanderContinuous-v2', 'BipedalWalker-v3', 'BipedalWalkerHard
 ENV = 0                     # select environment
 env_id = gym_envs[ENV]    
 env = gym.make(env_id)
-env = env.unwrapped         # allow access to setting enviroment state and remove episode step limit
+# env = env.unwrapped         # allow access to setting enviroment state and remove episode step limit
 
 warmup = np.array([1e3 for envs in range(len(gym_envs))])
 warmup[-2:] *= 10
