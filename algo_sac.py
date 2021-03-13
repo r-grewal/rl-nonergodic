@@ -146,7 +146,7 @@ class Agent_sac():
         Parameters:
             state (list): current environment state
             stoch (str): stochastic policy sampling via 'B', 'LAP' 'MVN', 'ST' or 'UVN' distribution
-            multi: N/A
+            multi (str): whether action is being taken as part of n-step targets
 
         Return:
             numpy_next_action: action to be taken by agent in next step for gym
@@ -189,7 +189,7 @@ class Agent_sac():
         # sample next stochastic action policy for target critic network based on mini-batch
         if self.stoch != 'MVN':
             batch_next_stoc_actions, batch_next_logprob_actions = \
-                            self.actor.stochastic_uv(batch_next_states, self.batch_size, self.stoch)
+                            self.actor.stochastic_uv(batch_next_states, self.stoch)
         else:
             batch_next_stoc_actions, batch_next_logprob_actions = \
                                         self.actor.stochastic_mv_gaussian(batch_next_states)
