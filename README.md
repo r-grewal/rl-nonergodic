@@ -4,7 +4,7 @@ PyTorch implementation investigating the impact of different surrogate loss func
 Focus is on existing state-of-the-art, off-policy, model-free algorithms TD3 and SAC using OpenAI gym and PyBullet environments with additional algorithms added soon.
 
 Agents are trained on a diverse range of popular RL environments from 3D hopping to full upright 3D humanoid movement, these are considered more difficult than their MuJoCo counterparts. Below we list the five to be initially tested with input features and continuous actions dimensions showed in brackets respectively.
-* PyBullet: HopperBulletEnv-v0 (15, 3), Walker2DBulletEnv-v0 (22, 6), HalfCheetahBulletEnv-v0 (26, 6), AntBulletEnv-v0 (28, 8), HumanoidBulletEnv-v0 (44, 17).
+* PyBullet: HopperBulletEnv-v0 (15, 3), Walker2DBulletEnv-v0 (22, 6), AntBulletEnv-v0 (28, 8), HumanoidBulletEnv-v0 (44, 17).
 Some comparative results are presented in [Raffin and Stulp (2020)](https://arxiv.org/pdf/2005.05719.pdf).
 
 Loss functions used in descending order outlier suppression include even powers of MSE up to MSE^4, MSE, Huber, MAE, Hypersurface Cost, Cauchy, Truncated Cauchy and Correntropy-Induced Metric. Scale Parameter for Cauchy distribution is estimated using the Nagy algorithm and truncation is performed using heuristics. Correntropy Gaussian kernel size is estimated empirically as the average error. Non-ergodicity model is currently being tested in suitable environments. Furthermore, experiments will be conducted on varying the size of the replay buffer and incorporating n-step returns in continuous action spaces for the critic network.
@@ -36,7 +36,7 @@ Given extremely important behaviour and events are very likely to occur during t
 ## Acknowledgements
 The author acknowledges the facilities, and the scientific and technical assistance of the Sydney Informatics Hub at the University of Sydney and, in particular, access to the high performance computing facility Artemis.
 
-The python implementation has been significantly modified and written from scratch but is based on the original authors’ code along with insight from several other repositories. Below is an alphabetised list of sources.
+The python implementation of base algorithms has been significantly modified and written from scratch but is based on the original authors’ code along with insight from several other repositories. Below is an alphabetised list of sources.
 * [haarnoja/sac](https://github.com/haarnoja/sac)
 * [openai/spinningup](https://github.com/openai/spinningup)
 * [p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch]( https://github.com/p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch)
