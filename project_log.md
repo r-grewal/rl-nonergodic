@@ -1,5 +1,15 @@
 # Project Log
 
+* 2021-03-13
+
+SAC implemented and (mostly) working again. Improved output plots to be more smooth, add gridlines and includes combined all-trial plot with interpolated mean and MAD. Minor changes to Cauchy scale and kernel size requires re-runs of all experiments just to be consistent.
+
+SAC implementation works for 3 actor policy sampling distributions: normal, student-t and Laplace. Student-t can facilitate an analysis on the impact of mini batch size on final result through the degrees of freedom parameter. Laplace will allow analysis on how important agent variance/exploration is since it is significantly more likely to sample near the mean. Multivariable normal has a bug that cause the neural network to yield NaN outputs for steps (roughly) > batch size, the cause of this error is unknown for the time being. Also modified algorithm to add random initial steps to ensure a new seed is generated each trial. 
+
+Overall, majority of code is seemingly complete. Still need to get multi-step returns code functioning for both algorithms. Incorporating non-ergodicity is straight-forward but is only possible if the sum of rewards and target Q-values is non-negative, a straightforward implementation would be to only enable non-ergodic returns after learning begins to occur (however this defeats the point of using a non-ergodic return).
+
+Humanoid experiments will be run next for SAC and uploaded when complete. HalfCheetah experiments will also no longer be run as it is not distinct enough to be worthy of the computational run-time. This will free up resources to run more risk-taking/management experiments later on.
+
 * 2021-03-10
 
 Preliminary TD3 200k step runs with 3 trials for Hopper and Walker2D reveal very interesting results. We visually observe the opposite of what was expected with different surrogate loss functions. For example, in traditional supervised ML, L1 loss performs internal feature selection at the cost of stability. Similarly, the other loss functions perform differing levels of outlier selection and removal either through dampening their magnitude or explicit truncation. 
