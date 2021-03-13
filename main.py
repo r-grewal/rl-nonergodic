@@ -15,7 +15,7 @@ gym_envs = [# 'LunarLanderContinuous-v2', 'BipedalWalker-v3', 'BipedalWalkerHard
             'AntBulletEnv-v0', 'HumanoidBulletEnv-v0'
             ]
 
-ENV = 3                     # select environment
+ENV = 0                     # select environment
 env_id = gym_envs[ENV]    
 env = gym.make(env_id)
 env = env.unwrapped         # allow access to setting enviroment state and remove episode step limit
@@ -26,7 +26,7 @@ warmup[-2:] *= 10
 # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
 surrogate_critic_loss = ['MSE']
 
-for fn in surrogate_critic_loss:
+for loss_fn in surrogate_critic_loss:
 
     inputs = {
             # TD3 hyperparameters
@@ -43,7 +43,7 @@ for fn in surrogate_critic_loss:
             'discount': 0.99,               # discount factor for successive step
             'trail': 50,                    # moving average count of episode scores for model saving and plots
             'ergodicity': 'Yes',            # assume ergodicity 'Yes' or 'No'  
-            'loss_fn': fn,                  # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
+            'loss_fn': loss_fn,                  # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
             'buffer': 1e6,                  # maximum transistions in experience replay buffer
             'multi_steps': 1,               # bootstrapping of target critic values and rewards
             'n_trials': 3,                  # number of total trials
