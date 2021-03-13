@@ -1,10 +1,10 @@
 # Robust Twin Critic Evaluation, n-step Returns and Non-ergodicity in Deep Reinforcement Learning
 
 PyTorch implementation investigating the impact of different surrogate loss functions for critic backpropagation, n-step returns in continuous action space and (eventually) implementing non-ergodicity.
-Focus is on existing state-of-the-art, off-policy, model-free algorithms TD3 and SAC using OpenAI gym and PyBullet environments with additional algorithms added soon.
+Focus is on existing state-of-the-art, off-policy, model-free algorithms TD3 and SAC using PyBullet environments with additional algorithms added soon.
 
-Agents are trained on a diverse range of popular RL environments from 3D hopping to full upright 3D humanoid movement, these are considered more difficult than their MuJoCo counterparts. Below we list the five to be initially tested with input features and continuous actions dimensions showed in brackets respectively.
-* PyBullet: HopperBulletEnv-v0 (15, 3), Walker2DBulletEnv-v0 (22, 6), AntBulletEnv-v0 (28, 8), HumanoidBulletEnv-v0 (44, 17).
+Agents are trained on a diverse range of popular RL environments from 3D hopping to full upright 3D humanoid movement. Below we list the four to be initially tested with input features and continuous actions dimensions showed in brackets respectively.
+* HopperBulletEnv-v0 (15, 3), Walker2DBulletEnv-v0 (22, 6), AntBulletEnv-v0 (28, 8), HumanoidBulletEnv-v0 (44, 17).
 Some comparative results are presented in [Raffin and Stulp (2020)](https://arxiv.org/pdf/2005.05719.pdf).
 
 Loss functions used in descending order outlier suppression include even powers of MSE up to MSE^4, MSE, Huber, MAE, Hypersurface Cost, Cauchy, Truncated Cauchy and Correntropy-Induced Metric. Scale Parameter for Cauchy distribution is estimated using the Nagy algorithm and truncation is performed using heuristics. Correntropy Gaussian kernel size is estimated empirically as the average error. Non-ergodicity model is currently being tested in suitable environments. Furthermore, experiments will be conducted on varying the size of the replay buffer and incorporating n-step returns in continuous action spaces for the critic network.
@@ -19,7 +19,7 @@ See progress_log.md for detailed update history.
 * Deep Deterministic Policy Gradients (DDPG) ([Silver et al. 2014](http://proceedings.mlr.press/v32/silver14.pdf), [Lillicrap et al. 2016](https://arxiv.org/pdf/1509.02971.pdf))
 * Proximal Policy Optmisation (PPO) ([Schulmanet al. 2017](https://arxiv.org/pdf/1707.06347.pdf))
 * Twin Delayed Deep Deterministic Policy Gradients (TD3) ([Fujimoto et al. 2018](https://arxiv.org/pdf/1802.09477.pdf))
-* Soft Actor-Critic (SAC) ([Haarnoja et al. 2017](https://arxiv.org/pdf/1702.08165.pdf), [Haarnoja et al. 2018a](https://arxiv.org/pdf/1801.01290.pdf), [Haarnoja et al. 2018b](https://arxiv.org/pdf/1803.06773.pdf))
+* Soft Actor-Critic (SAC) ([Haarnoja et al. 2017](https://arxiv.org/pdf/1702.08165.pdf), [Haarnoja et al. 2017](https://arxiv.org/pdf/1702.08165.pdf), [Haarnoja et al. 2018a](https://arxiv.org/pdf/1801.01290.pdf), [Haarnoja et al. 2018b](https://arxiv.org/pdf/1803.06773.pdf))
 * Soft Actor-Critic (SAC) w/ Learned Temperature ([Haarnoja et al. 2018c](https://arxiv.org/pdf/1812.05905.pdf), [Haarnoja et al. 2019](https://arxiv.org/pdf/1812.11103.pdf))
 * Augmented Random Search (ARS) ([Mania, Guy and Recht 2018]( https://arxiv.org/pdf/1803.07055.pdf)) 
 * Coupling of n-step Returns and Experience Replay ([Fedus et al. 2020](https://arxiv.org/pdf/2007.06700.pdf))
