@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.interpolate import CubicSpline
 import torch as T
 import torch.nn.functional as F
 
@@ -16,8 +17,8 @@ def truncation(estimated, target):
         target (list): truncated Q-values from mini-batch
     """
     arg = (target - estimated).detach().clone()
-    sigma, mean = T.std_mean(arg)
-    batch_idx = T.where(T.abs(arg - mean) > 3*sigma)
+    sigma, mean = T.std_mean(arg, unbiased=False)
+    batch_idx = T.where(T.abs(arg - mean) > 3 * sigma)    # 3-sigma rule
 
     estimated[batch_idx], target[batch_idx] = 0.0, 0.0
 
@@ -187,7 +188,7 @@ def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
         trial_log = trial_log[:np.min(np.where(trial_log[:, 0] == 0))]
     except:
         pass
-
+    
     score_log = trial_log[:, 1]
     steps = trial_log[:, 2]
     critic_log = trial_log[:, 3:5].sum(axis=1)
@@ -211,10 +212,8 @@ def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
         cum_steps[i+1] = steps[i+1] + cum_steps[i]
 
     exp = int(len(str(int(np.max(cum_steps)))) - 1)
-    # x_steps = np.round(cum_steps/10**(exp), 1)
     x_steps = cum_steps/10**(exp)
     
-
     # calculate moving averages
     trail = input_dict['trail']
     running_avg1 = np.zeros(length)
@@ -235,6 +234,7 @@ def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
     ax1.set_ylabel('Average Score', color='C0')
     ax1.yaxis.set_label_position('left')
     ax1.tick_params(axis='y', colors='C0')
+    ax1.grid(True, linewidth=0.5)
 
     xmin, xmax = ax1.get_xlim()
     ymin, ymax = ax1.get_ylim()
@@ -258,12 +258,15 @@ def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
     #     warmup = x_steps[np.min(np.where(cum_steps - input_dict['random'] > 0))]
     #     ax1.vlines(x=warmup, ymin=ymin, ymax=ymax, linestyles ="dashed", color='C7')
 
-    ax1.set_title('Trailing '+str(int(input_dict['trail']))+' Episode Averages and '+
-                str(partitions)[2:4]+'% Partitions \n'+
-                input_dict['algo']+': \''+env_id+'\' '+
-                '('+'g'+input_dict['ergodicity'][0]+', '+input_dict['loss_fn']+', '+
-                'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+
-                ', ''e'+str(int(length))+')')
+    tit1 = 'Trailing '+str(int(input_dict['trail']))+' Episode Averages and '+str(partitions)[2:4]+'% Partitions \n'
+    tit2 = input_dict['algo']+': \''+env_id+'\' '+'('+'g'+input_dict['ergodicity'][0]+', '+input_dict['loss_fn']+', '
+    tit3 = 'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+', '
+    if input_dict['algo'] == 'SAC':
+            tit3 += 'r'+str(input_dict['r_scale'])+', '+input_dict['s_dist']+', '
+    tit4 = 'e'+str(int(length))+')'
+    title = tit1 + tit2 + tit3 + tit4
+
+    ax1.set_title(title)
 
     plt.savefig(filename_png, bbox_inches='tight', dpi=600, format='png')
 
@@ -319,33 +322,30 @@ def plot_trial_curve(env_id, input_dict, trial_log, filename_png):
         for e in range(max_episodes[trial]-max_offset[trial]-1):
             cum_steps[trial, e+1] = steps[trial, e+1] + cum_steps[trial, e]
     
-    # print(steps_log[0])
-    # print(steps[0])
-    # print(cum_steps[0])
     exp = int(len(str(int(input_dict['n_cumsteps']) - 1)))
     x_steps = cum_steps/10**(exp)   
-    # print(x_steps[1])
 
-    # mask values where there is no data
-    scores1 = np.ma.masked_equal(scores, 0)
-    critics1 = np.ma.masked_equal(critics, 0)
-    x_steps1 = np.ma.masked_equal(x_steps, 0)
-    # print(x_steps[1])
-    
-    # interpolate values across trials
-    count_x = x_steps1[np.where(np.max(max_episodes))][0]
-    score_interp = np.interp(count_x, x_steps1[1], scores1[1])
-    # score_interp = [np.interp(count_x, x_steps[i], scores[i]) for i in range(steps.shape[0])]
-    critic_interp = [np.interp(count_x, x_steps[i], critics[i]) for i in range(steps.shape[0])]
+    # create lists for interteploation
+    list_steps = []
+    list_scores = []
+    list_critic = []
+    for trial in range(scores.shape[0]):
+        trial_step = []
+        trial_score = []
+        trial_critic = []
+        for epis in range(max_episodes[trial]-max_offset[trial]):
+            trial_step.append(x_steps[trial, epis])
+            trial_score.append(scores[trial, epis])
+            trial_critic.append(critics[trial, epis])
+        list_steps.append(trial_step)
+        list_scores.append(trial_score)
+        list_critic.append(trial_critic)
 
-    # print(cum_steps[0], cum_steps[1], cum_steps[2])
-    # print(x_steps1[2])
-    # print(count_x)
-    print(scores1[1])
-    print(score_interp)
-    # print(critic_interp)
-    
- 
+    # linearly interpolate mean and MAD across trials
+    count_x = list_steps[max_episodes.index(max(max_episodes))]
+    score_interp = [np.interp(count_x, list_steps[i], list_scores[i]) for i in range(steps.shape[0])]
+    critic_interp = [np.interp(count_x, list_steps[i], list_critic[i]) for i in range(steps.shape[0])]
+
     score_mean = np.mean(score_interp, axis=0)
     score_mad = np.mean(np.abs(score_interp - score_mean), axis=0)
     critic_mean = np.mean(critic_interp, axis=0)
@@ -362,22 +362,28 @@ def plot_trial_curve(env_id, input_dict, trial_log, filename_png):
     ax1.set_ylabel('Score', color='C0')
     ax1.yaxis.set_label_position('left')
     ax1.tick_params(axis='y', colors='C0')
+    ax1.grid(True, linewidth=0.5)
 
     xmin, xmax = ax1.get_xlim()
     ymin, ymax = ax1.get_ylim()
     ax1.set(xlim=(xmin, xmax), ylim=(ymin, ymax))
 
     ax2.plot(count_x, critic_mean, color='C3')
-    # ax2.fill_between(count_x, critic_mean-critic_mad, critic_mean+critic_mad, facecolor='C3', alpha=0.4)
+    ax2.fill_between(count_x, critic_mean-critic_mad, critic_mean+critic_mad, facecolor='C3', alpha=0.4)
     ax2.axes.get_xaxis().set_visible(False)
     ax2.yaxis.tick_right()
     ax2.set_ylabel('Critic Loss', color='C3')
     ax2.yaxis.set_label_position('right')
     ax2.tick_params(axis='y', colors='C3')
 
-    ax1.set_title('Linear Interpolated Mean and MAD of Trials \n'+ 
-                input_dict['algo']+': \''+env_id+'\' '+'('+'g'+input_dict['ergodicity'][0]+
-                ', '+input_dict['loss_fn']+', '+'b'+str(input_dict['buffer']/1e6)[0]+
-                ', '+'m'+str(input_dict['multi_steps'])+', '+'n'+str(input_dict['n_trials'])+')')
+    tit1 = 'Linearly Interpolated Mean and MAD Bands of '+str(input_dict['n_trials'])+' Trials \n'
+    tit2 = input_dict['algo']+': \''+env_id+'\' '+'('+'g'+input_dict['ergodicity'][0]+', '+input_dict['loss_fn']+', '
+    tit3 = 'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+', '
+    if input_dict['algo'] == 'SAC':
+            tit3 += 'r'+str(input_dict['r_scale'])+', '+input_dict['s_dist']+', '
+    tit4 = 'e'+str(int(length))+')'
+    title = tit1 + tit2 + tit3 + tit4
+
+    ax1.set_title(title)
     
     plt.savefig(filename_png, bbox_inches='tight', dpi=600, format='png')
