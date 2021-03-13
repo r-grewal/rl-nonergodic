@@ -280,6 +280,7 @@ def plot_trial_curve(env_id, input_dict, trial_log, filename_png):
         trial_log (array): log of episode data of a single trial
         filename_png (directory): save path of plot
     """
+    # print(trial_log[:,:25, 3:5], trial_log.shape)
     score_log = trial_log[:, :, 1]
     steps_log = trial_log[:, :, 2]
     critic_log = trial_log[:, :, 3:5].sum(axis=2)
@@ -291,7 +292,7 @@ def plot_trial_curve(env_id, input_dict, trial_log, filename_png):
             max_episodes.append(np.min(np.where(steps_log[trial, :] == 0)))
         except:
             max_episodes.append(steps_log.shape[1])
-    
+
     # ignore intial NaN critic loss when batch_size > buffer
     offset = []
     for trial in range(steps_log.shape[0]):
@@ -302,18 +303,19 @@ def plot_trial_curve(env_id, input_dict, trial_log, filename_png):
             idx += 1
 
         offset.append(idx)
-
-    max_offset = np.maximum(np.array(offset) - 1, 0)
-    length = steps_log.shape[1] - np.min(max_offset)
     
+    max_offset = np.maximum(np.array(offset) - 1, 0)
+    small_max_offset = np.min(max_offset)
+    length = steps_log.shape[1] - small_max_offset 
+
     scores = np.zeros((steps_log.shape[0], length))
     steps = np.zeros((steps_log.shape[0], length))
     critics = np.zeros((steps_log.shape[0], length))
 
     for trial in range(steps.shape[0]):
-        scores[trial, :length - max_offset[trial]] = score_log[trial, max_offset[trial]:]
-        steps[trial, :length - max_offset[trial]] = steps_log[trial, max_offset[trial]:]
-        critics[trial, :length - max_offset[trial]] = critic_log[trial, max_offset[trial]:]
+        scores[trial, :length + small_max_offset - max_offset[trial]] = score_log[trial, max_offset[trial]:]
+        steps[trial, :length + small_max_offset - max_offset[trial]] = steps_log[trial, max_offset[trial]:]
+        critics[trial, :length + small_max_offset - max_offset[trial]] = critic_log[trial, max_offset[trial]:]
 
     # obtain cumulative steps for x-axis for each trial
     cum_steps = np.zeros((steps.shape[0], length))
