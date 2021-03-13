@@ -3,7 +3,7 @@ import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions.multivariate_normal import MultivariateNormal
+import torch.distributions as distibution
 
 class ActorNetwork(nn.Module):
     """
@@ -21,7 +21,7 @@ class ActorNetwork(nn.Module):
             fc2_dim (int): size of second fully connected layer
             num_actions (int): number of actions available to the agent
             max_action (float): maximium possible value of action in environment
-            lr_alpha (float): actor learning rate of Adam optimiser
+            lr_alpha (float>0): actor learning rate of Adam optimiser
             reparam_noise (float>0): miniscule constant for valid logarithm
             algo_name (string): name of algorithm
             loss_type (str): Cauchy, CE, Huber, KL, MAE, MSE, TCauchy loss functions
@@ -41,9 +41,9 @@ class ActorNetwork(nn.Module):
         self.nn_name = str(nn_name)
         
         # directory to save network checkpoints
-        if not os.path.exists(algo_name+'/'+env_id):
-            os.makedirs(algo_name+'/'+env_id)
-        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
+        if not os.path.exists('./models/'+'/'+env_id):
+            os.makedirs('./models/'+'/'+env_id)
+        self.file_checkpoint = os.path.join('./models/'+'/'+env_id, self.env_id+'--'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape
@@ -75,14 +75,50 @@ class ActorNetwork(nn.Module):
         moments = self.mu(actions_2x)
 
         return moments
+    
+    def stochastic_uv(self, state, batch_size, stoch='UVN'):
+        """ 
+        Stochastic action selection sampled from several unbounded univarite distirbution
+        using the reparameterisation trick from https://arxiv.org/pdf/1312.6114.pdf.
+        
+        Parameters:
+            state (list): current environment state or mini-batch
+            batch_size (int): mini-batch size
+            stoch (str): stochastic policy 'LAP' 'MVN', 'ST' or 'UVN' distribution
 
+        Returns:
+            bounded_action (list, float): action truncated by tanh and scaled by max action
+            bounded_logprob_action (float): log probability of sampled truncated action 
+        """
+        moments = self.forward(state)
+        mu, log_scale = moments[:, :self.num_actions], moments[:, self.num_actions:]
+        scale = log_scale.exp()
+        
+        if stoch == 'UVN':
+            probabilities = distibution.normal.Normal(loc=mu, scale=scale)
+        elif stoch == 'ST':
+            probabilities = distibution.studentT.StudentT(batch_size-1, loc=mu, scale=scale)
+        else:
+            probabilities = distibution.laplace.Laplace(loc=mu, scale=scale)
+
+        # reparmeterise trick for random variable sample to be pathwise differentiable
+        unbounded_action = probabilities.rsample().to(self.device)
+        bounded_action = T.tanh(unbounded_action) * self.max_action
+        unbounded_logprob_action = probabilities.log_prob(unbounded_action).sum(1, keepdim=True).to(self.device)
+        
+        # ensure defined bounded log by adding minute noise
+        log_inv_jacobian = T.log(1 - (bounded_action / self.max_action)**2 + self.reparam_noise).sum(dim=1, keepdim=True)
+        bounded_logprob_action = unbounded_logprob_action - log_inv_jacobian
+
+        return bounded_action, bounded_logprob_action
+    
     def stochastic_mv_gaussian(self, state):
         """
         Stochastic action selection sampled from unbounded spherical Gaussian input noise 
         with tanh bounding using Jacobian transformation.
 
         Parameters:
-            state (list): current environment state or mini-bathc
+            state (list): current environment state or mini-batch
 
         Returns:
             bounded_action (list, float): action truncated by tanh and scaled by max action
@@ -90,6 +126,7 @@ class ActorNetwork(nn.Module):
         """
         moments = self.forward(state)
         batch_size = moments.size()[0]
+        print(moments)
         mu, log_var = moments[:, :self.num_actions], moments[:, self.num_actions:]
         var = log_var.exp()
 
@@ -98,21 +135,22 @@ class ActorNetwork(nn.Module):
         else:
             mu, var = mu.view(-1), var.view(-1)
         
-        # create covariance matrices for each sample and perform Cholesky decomposition
+        # create diagonal covariance matrices for each sample and perform Cholesky decomposition
         cov_mat = T.stack([T.eye(self.num_actions) for i in range(batch_size)]).to(self.device)
 
         if batch_size > 1:
             for sample in range(batch_size):
                 for vol in range(self.num_actions):
-                        cov_mat[sample, vol, vol] = var[vol, vol]
+                        cov_mat[sample, vol, vol] = var[sample, vol]    # diagonal elements are variance
         else:
             for vol in range(self.num_actions):     
                 cov_mat[0, vol, vol] = var[vol]
 
         chol_ltm = T.cholesky(cov_mat)
 
+        probabilities = distibution.multivariate_normal.MultivariateNormal(loc=mu, scale_tril=chol_ltm)
+
         # reparmeterise trick for random variable sample to be pathwise differentiable
-        probabilities = MultivariateNormal(loc=mu, scale_tril=chol_ltm)
         unbounded_action = probabilities.rsample().to(self.device)
         bounded_action = T.tanh(unbounded_action) * self.max_action
         unbounded_logprob_action = probabilities.log_prob(unbounded_action).to(self.device)
@@ -120,35 +158,6 @@ class ActorNetwork(nn.Module):
         # ensure defined bounded log by adding minute noise
         log_inv_jacobian = T.log(1 - (bounded_action / self.max_action)**2 + self.reparam_noise).sum(dim=1)
         bounded_logprob_action = unbounded_logprob_action - log_inv_jacobian
-
-        return bounded_action, bounded_logprob_action
-
-    def stochastic_gaussian(self, state):
-        """ 
-        [REDUNDANT] Stochastic action selection sampled from unbounded Gaussian input noise.
-        
-        Parameters:
-            state (list): current environment state or mini-bathc
-
-        Returns:
-            bounded_action (list, float): action truncated by tanh and scaled by max action
-            bounded_logprob_action (float): log probability of sampled truncated action 
-        """
-        moments = self.forward(state)
-        mu, log_sigma = moments[:, :self.num_actions], moments[:, self.num_actions:]
-        std = log_sigma.exp()
-
-        probabilities = T.distributions.normal.Normal(loc=mu, scale=std)
-
-        unbounded_action = probabilities.rsample()
-        bounded_action = T.tanh(unbounded_action) * self.max_action
-        unbounded_logprob_action = probabilities.log_prob(unbounded_action).sum(1,keepdim=True)
-        
-        log_inv_jacobian = T.log(1 - (bounded_action / self.max_action)**2 + self.reparam_noise).sum(dim=1, keepdim=True)
-        bounded_logprob_action = unbounded_logprob_action - log_inv_jacobian
-
-        bounded_action = bounded_action.to(self.device)
-        bounded_logprob_action = bounded_logprob_action.to(self.device)
 
         return bounded_action, bounded_logprob_action
 
@@ -176,7 +185,7 @@ class CriticNetwork(nn.Module):
             fc2_dim (int): size of second fully connected layer
             num_actions (int): number of actions available to the agent
             max_action (float): maximium possible value of action in environment
-            lr_beta (float): critic learning rate of Adam optimiser
+            lr_beta (float>0): critic learning rate of Adam optimiser
             nn_name (string): name of network
             loss_type (str): Cauchy, CE, Huber, KL, MAE, MSE, TCauchy loss functions
             algo_name (string): name of algorithm
@@ -194,9 +203,9 @@ class CriticNetwork(nn.Module):
         self.nn_name = str(nn_name)
 
         # directory to save network checkpoints
-        if not os.path.exists(algo_name+'/'+env_id):
-            os.makedirs(algo_name+'/'+env_id)
-        self.file_checkpoint = os.path.join('./'+algo_name+'/'+env_id, self.env_id+'_'+self.algo_name
+        if not os.path.exists('./models/'+'/'+env_id):
+            os.makedirs('./models/'+'/'+env_id)
+        self.file_checkpoint = os.path.join('./models/'+'/'+env_id, self.env_id+'--'+self.algo_name
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape and number of actions
