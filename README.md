@@ -37,6 +37,7 @@ Given extremely important behaviour and events are very likely to occur during t
 The author acknowledges the facilities, and the scientific and technical assistance of the Sydney Informatics Hub at the University of Sydney and, in particular, access to the high performance computing facility Artemis.
 
 The python implementation of base algorithms has been significantly modified and written from scratch but is based on the original authors’ code along with insight from several other repositories. Below is an alphabetised list of sources.
+* [DLR-RM/stable-baelines3](https://github.com/DLR-RM/stable-baselines3)
 * [haarnoja/sac](https://github.com/haarnoja/sac)
 * [openai/spinningup](https://github.com/openai/spinningup)
 * [p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch]( https://github.com/p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch)
