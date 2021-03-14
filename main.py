@@ -11,20 +11,21 @@ from utils import plot_learning_curve, plot_trial_curve
 gym_envs = [# 'LunarLanderContinuous-v2', 'BipedalWalker-v3', 'BipedalWalkerHardcore-v3',
             # 'CartPoleContinuousBulletEnv-v0', 'InvertedPendulumBulletEnv-v0',
             # 'InvertedDoublePendulumBulletEnv-v0', 'KukaBulletEnv-v0', 
-            'HopperBulletEnv-v0', 'Walker2DBulletEnv-v0', # 'HalfCheetahBulletEnv-v0', 
+            'HopperBulletEnv-v0', 'Walker2DBulletEnv-v0', 'HalfCheetahBulletEnv-v0', 
             'AntBulletEnv-v0', 'HumanoidBulletEnv-v0'
             ]
 
-ENV = 0                     # select environment
-env_id = gym_envs[ENV]    
-env = gym.make(env_id)
-env = env.unwrapped         # allow access to setting enviroment state and remove episode step limit
-
 warmup = np.array([1e3 for envs in range(len(gym_envs))])
-warmup[-2:] *= 10
+warmup[-3:] *= 10
 
 # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
-surrogate_critic_loss = ['MSE']
+surrogate_critic_loss = ['MSE6']
+
+ENV = 3                               # select environment
+env_id = gym_envs[ENV]    
+env = gym.make(env_id)
+# env = env.env
+env = env.unwrapped                 # allow access to setting enviroment state and remove episode step limit
 
 for loss_fn in surrogate_critic_loss:
 
@@ -36,18 +37,19 @@ for loss_fn in surrogate_critic_loss:
 
             # SAC hyperparameters
             'r_scale': 1,                   # reward scaling to offset entropy target ('inverse temperature')
-            's_dist': 'UVN',                # stochastic policy via 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            's_dist': 'UVN',                # stochastic actor policy via 'LAP' 'MVN', 'ST' or 'UVN' distribution
 
             # execution details
             'random': warmup[ENV],          # intial random warmup steps to generate random seed
+            'max_steps': 1e4,               # maximum number of steps per episode to prevent excessive runtime
             'discount': 0.99,               # discount factor for successive step
-            'trail': 50,                    # moving average count of episode scores for model saving and plots
+            'trail': 50,                    # moving average count of episode scores used for model saving and plots
             'ergodicity': 'Yes',            # assume ergodicity 'Yes' or 'No'  
             'loss_fn': loss_fn,             # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
             'buffer': 1e6,                  # maximum transistions in experience replay buffer
-            'multi_steps': 1,               # bootstrapping of target critic values and rewards
+            'multi_steps': 1,               # bootstrapped steps of target critic values and discounted rewards
             'n_trials': 3,                  # number of total trials
-            'n_cumsteps': 3e4,              # maximum cumulative steps per trial
+            'n_cumsteps': 2e4,              # maximum cumulative steps per trial
             'algo': 'SAC'                   # model 'TD3' or 'SAC'
             }  
 
@@ -75,7 +77,7 @@ for loss_fn in surrogate_critic_loss:
         # agent.load_models()    # load existing actor-critic network parameters to continue learning
 
         best_score = env.reward_range[0]    # set intial best to worst possible reward
-        score_log = []
+        time_log, score_log, step_log, logtemp_log, loss_log, loss_params_log = [], [], [], [], [], []
         cum_steps, episode = 0, 1
 
         while cum_steps < int(inputs['n_cumsteps']):
@@ -91,13 +93,13 @@ for loss_fn in surrogate_critic_loss:
                 # env.render(mode='human')    # render environment visually
 
                 batch_states, batch_actions, batch_rewards, \
-                            batch_next_states, batch_dones = agent.get_mini_batch(batch_size)
+                                batch_next_states, batch_dones = agent.get_mini_batch(batch_size)
 
                 batch_targets = agent.multi_step_target(batch_rewards, batch_next_states, batch_dones, 
-                                            env, inputs['s_dist'], inputs['ergodicity'], inputs['multi_steps'])
+                                                env, inputs['s_dist'], inputs['ergodicity'], inputs['multi_steps'])
 
                 loss, logtemp, loss_params = agent.learn(batch_states, batch_actions, batch_targets, 
-                                                        inputs['loss_fn'], inputs['ergodicity'])
+                                                            inputs['loss_fn'], inputs['ergodicity'])
 
                 agent.store_transistion(state, action, reward, next_state, done)    # no current transistion saampling
 
@@ -107,13 +109,18 @@ for loss_fn in surrogate_critic_loss:
                 step += 1
                 cum_steps += 1
 
-            end_time = time.perf_counter()
-            
-            trial_log[round, episode-1, 0], trial_log[round, episode-1, 1] =  np.array(end_time-start_time), np.array(score)
-            trial_log[round, episode-1, 2], trial_log[round, episode-1, 3:6] = np.array(step), np.array(loss)
-            trial_log[round, episode-1, 6], trial_log[round, episode-1, 7:] = np.array(logtemp), np.array(loss_params)
+                if step > int(inputs['max_steps']):
+                    break
 
+            end_time = time.perf_counter()
+
+            time_log.append(end_time - start_time)
             score_log.append(score)
+            step_log.append(step)
+            loss_log.append(loss)
+            logtemp_log.append(logtemp)
+            loss_params_log.append(loss_params)
+
             trail_score = np.mean(score_log[-inputs['trail']:])
             if trail_score > best_score:
                 best_score = trail_score
@@ -122,7 +129,7 @@ for loss_fn in surrogate_critic_loss:
             fin = datetime.now()
 
             print('{} {} {:1.0f}/s ep/st/cst {}/{}/{}: r {:1.0f}, r{} {:1.0f}, C/A loss {:1.1f}/{:1.1f}'
-                .format(fin.strftime('%d %H:%M:%S'), loss_fn, step/trial_log[round, episode-1, 0], episode, step, 
+                .format(fin.strftime('%d %H:%M:%S'), loss_fn, step/time_log[-1], episode, step, 
                         cum_steps, score, inputs['trail'], trail_score, sum(loss[0:2]), loss[2]))
 
             episode += 1
@@ -137,6 +144,12 @@ for loss_fn in surrogate_critic_loss:
             dir2 += '_r'+str(inputs['r_scale'])+'_'+inputs['s_dist']
         dir3 = '_'+str(exp)+'s'+str(int(inputs['n_cumsteps']))[0]+'_n'+str(round+1)
         directory = dir1 + dir2 + dir3
+
+        count = len(score_log)
+
+        trial_log[round, :count, 0], trial_log[round, :count, 1] =  np.array(time_log), np.array(score_log)
+        trial_log[round, :count, 2], trial_log[round, :count, 3:6] = np.array(step_log), np.array(loss_log)
+        trial_log[round, :count, 6], trial_log[round, :count, 7:] = np.array(logtemp_log), np.array(loss_params_log)
 
         plot_learning_curve(env_id, inputs, trial_log[round], directory+'.png')
 
