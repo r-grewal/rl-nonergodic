@@ -116,7 +116,7 @@ class Agent_sac():
         """
         Uniform sampling from replay buffer and send to GPU.
 
-        Paramters:
+        Parameters:
             batch_size (int): mini-batch size
 
         Returns:
@@ -244,7 +244,7 @@ class Agent_sac():
         """
         Agent learning via SAC algorithm.
 
-        Paramters:
+        Parameters:
             batch_next_states (array): batch of current environment states
             batch_actions (array): batch of continuous actions taken to arrive at states
             batch_target (array): twin duelling target Q-values
@@ -263,7 +263,7 @@ class Agent_sac():
         # return nothing till batch size less than replay buffer
         if self.memory.mem_idx < self.batch_size + 10:
             loss = [np.nan, np.nan, np.nan]
-            cpu_logtmep = self.log_alpha.detach().cpu().numpy()
+            cpu_logtmep = self.log_alpha.detach().cpu().numpy()[0]
             loss_params = [np.nan, np.nan, np.nan, np.nan]
             return loss, cpu_logtmep, loss_params
 
@@ -296,7 +296,7 @@ class Agent_sac():
 
         cpu_q1_loss = q1_loss.detach().cpu().numpy()
         cpu_q2_loss = q2_loss.detach().cpu().numpy()
-        cpu_logtmep = self.log_alpha.detach().cpu().numpy()
+        cpu_logtmep = self.log_alpha.detach().cpu().numpy()[0]
 
         loss = [cpu_q1_loss , cpu_q2_loss, np.nan] 
         loss_params = [self.cauchy_scale_1, self.cauchy_scale_2, kernel_1, kernel_2]
@@ -342,7 +342,7 @@ class Agent_sac():
 
         cpu_actor_loss = actor_loss.detach().cpu().numpy()
         loss[2] = cpu_actor_loss
-        cpu_logtmep = self.log_alpha.detach().cpu().numpy()
+        cpu_logtmep = self.log_alpha.detach().cpu().numpy()[0]
         
         return loss, cpu_logtmep, loss_params
 
@@ -350,7 +350,7 @@ class Agent_sac():
         """
         Update target network parameters with smoothing.
 
-        Paramters:
+        Parameters:
             tau (float<=1): Polyak averaging rate for target network parameter updates
         """        
         for param, target_param in zip(self.critic_1.parameters(), self.critic_1_target.parameters()):
