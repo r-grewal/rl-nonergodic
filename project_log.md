@@ -1,5 +1,13 @@
 # Project Log
 
+* 2021-03-14
+
+Learned how RAM works and that appending is much faster than inputting into a large numpy array. Modified main.py to append episode data resulting in 8-11% increase in overall speed.
+
+For several environments either at the early or late stages episodes are likely to run for many steps. For the early stage this is not really a problem, for the later stages however, having 300k+ steps in an episode can cause significant annoyances since this can increase the pre-set maximum number of steps by a huge amount. While this a great sign, i.e. the AI is learning to walk for extended periods of time, the Pybullet environments are not really the focus of this project. To simply evaluate robust twin critic loss we need only comparative learning curves for different loss functions. As such, we limit the maximum number of steps. 
+
+Letting the AI continue playing the game indefinitely till it losses will be crucial when evaluating risk-taking/management simulations since here we actually desire it to run forever i.e. not go bankrupt.
+
 * 2021-03-13
 
 Fixed catastrophic error in main.py. In each trial the neural networks were not being reset and so training was effectively one large trail. While the previous TD3 are still valid, they essentially represent one 900k step run. These will be removed for clarity. Ultimately this has very significantly reduced run-to-run variance.
