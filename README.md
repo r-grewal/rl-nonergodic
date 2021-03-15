@@ -27,6 +27,7 @@ See progress_log.md for detailed update history.
 * Correntropy and Huber Loss ([Lium, Pokharel, Principe 2007]( https://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=22F68E41A9F19D343CCF47403C29038F?doi=10.1.1.640.6891&rep=rep1&type=pdf), [Pokharel and Principe 2012](https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.639.4052&rep=rep1&type=pdf), [Du, Li and Shen 2012](https://lcs.ios.ac.cn/~ydshen/ICDM-12.pdf))
 * Cauchy Scale Estimation via the Nagy Algorithm ([Nagy 2006](http://www.jucs.org/jucs_12_9/parameter_estimation_of_the/jucs_12_09_1332_1344_nagy.pdf))
 * Truncated Cauchy Loss ([Guan et al. 2019](https://tongliang-liu.github.io/papers/TPAMITruncatedNMF.pdf))
+* A primer on statistical thermodynamics and entropy ([Landau and Lifshitz 1969](https://archive.org/details/ost-physics-landaulifshitz-statisticalphysics))
 
 ## Potential Applications
 Existing systems control, portfolio management tool in finance, risk management systems all to some degree rely on the use of continuous expectation values (probability weighted averages) which are inherently and deeply flawed since literally no individual or institution ever experiences the ‘expected’ value. 
