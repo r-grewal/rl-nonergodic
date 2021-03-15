@@ -13,7 +13,7 @@ class ActorNetwork(nn.Module):
         """
         Intialise class varaibles by creating neural network with Adam optimiser.
 
-        Paramters:
+        Parameters:
             env_id (string): name of gym environment
             input_dim (list): dimensions of inputs
             fc1_dim (int): size of first fully connected layer
@@ -44,7 +44,7 @@ class ActorNetwork(nn.Module):
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape
-        self.fc1 = nn.Linear(self.input_dims[0], self.fc1_dim)
+        self.fc1 = nn.Linear(sum(self.input_dims), self.fc1_dim)
         self.fc2 = nn.Linear(self.fc1_dim, self.fc2_dim)
         self.mu = nn.Linear(self.fc2_dim, self.num_actions)
 
@@ -57,7 +57,7 @@ class ActorNetwork(nn.Module):
         """
         Forward propogation of state to obtain actor psuedo-probabilistic action.
 
-        Paramters:
+        Parameters:
             state (list): current environment state
 
         Returns:
@@ -72,11 +72,11 @@ class ActorNetwork(nn.Module):
         return prob
 
     def save_checkpoint(self):
-        print('... saving checkpoint')
+        # print('... saving checkpoint')
         T.save(self.state_dict(), self.file_checkpoint)
 
     def load_checkpoint(self):
-        print('... loading checkpoint')
+        # print('... loading checkpoint')
         self.load_state_dict(T.load(self.file_checkpoint))
 
 class CriticNetwork(nn.Module):
@@ -88,7 +88,7 @@ class CriticNetwork(nn.Module):
         """
         Intialise class varaibles by creating neural network with Adam optimiser.
 
-        Paramters:
+        Parameters:
             env_id (string): name of gym environment
             input_dim (list): dimensions of inputs
             fc1_dim (int): size of first fully connected layer
@@ -119,7 +119,7 @@ class CriticNetwork(nn.Module):
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape and number of actions
-        self.fc1 = nn.Linear(self.input_dims[0] + self.num_actions, self.fc1_dim)
+        self.fc1 = nn.Linear(sum(self.input_dims) + self.num_actions, self.fc1_dim)
         self.fc2 = nn.Linear(self.fc1_dim, self.fc2_dim)
         self.q = nn.Linear(self.fc2_dim, 1)
 
@@ -132,7 +132,7 @@ class CriticNetwork(nn.Module):
         """
         Forward propogation of state-action pair to obtain Q-value.
 
-        Paramters:
+        Parameters:
             state (list): current environment state
             action (list): continuous actions taken to arrive at current state          
 
@@ -148,9 +148,7 @@ class CriticNetwork(nn.Module):
         return Q
 
     def save_checkpoint(self):
-        print('... saving checkpoint')
         T.save(self.state_dict(), self.file_checkpoint)
 
     def load_checkpoint(self):
-        print('... loading checkpoint')
         self.load_state_dict(T.load(self.file_checkpoint))
