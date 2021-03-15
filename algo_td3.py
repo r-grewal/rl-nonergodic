@@ -44,8 +44,8 @@ class Agent_td3():
         self.env = self.env.unwrapped
         state = self.env.reset()
 
-        self.input_dims = env.observation_space.shape           # input dimensions tuple
-        self.num_actions = int(env.action_space.shape[0])       # number of possible actions
+        self.input_dims = env.observation_space.shape    # input dimensions tuple
+        self.num_actions = int(env.action_space.shape[0])
         self.max_action = float(env.action_space.high[0])
         self.min_action = float(env.action_space.low[0])
 
@@ -91,7 +91,7 @@ class Agent_td3():
         
         self.update_network_parameters(self.tau)
 
-        batch_next_states = T.zeros((self.batch_size, *self.input_dims), requires_grad=True).to(self.actor.device)
+        batch_next_states = T.zeros((self.batch_size, sum(self.input_dims)), requires_grad=True).to(self.actor.device)
         batch_rewards = T.zeros((self.batch_size, ), requires_grad=True).to(self.actor.device)
         self.select_next_action(batch_next_states, stoch='N/A', multi='No')
         self.single_step_target(batch_rewards, batch_next_states, None, self.erg)
@@ -113,7 +113,7 @@ class Agent_td3():
         """
         Uniform sampling from replay buffer and send to GPU.
 
-        Paramters:
+        Parameters:
             batch_size (int): mini-batch size
 
         Returns:
@@ -150,7 +150,7 @@ class Agent_td3():
             next_action: action to be taken by agent in next step
         """
         action_noise = T.tensor(np.random.normal(loc=0, scale=self.policy_noise, 
-                            size=(self.num_actions,)), dtype=T.float)
+                                                 size=(self.num_actions,)), dtype=T.float)
         mu = action_noise.to(self.actor.device)
 
         if self.time_step > self.warmup:
@@ -232,9 +232,9 @@ class Agent_td3():
         batch_multi_next2_actions = T.zeros((self.batch_size, self.num_actions), requires_grad=True).to(self.actor.device)
         batch_multi_next1_rewards = batch_rewards.to(self.actor.device).clone()
         batch_multi_next1_states  = batch_next_states.to(self.actor.device).clone()
-        batch_multi_next2_states  = T.zeros((self.batch_size, *self.input_dims), requires_grad=True).to(self.actor.device)
+        batch_multi_next2_states  = T.zeros((self.batch_size, sum(self.input_dims)), requires_grad=True).to(self.actor.device)
         batch_multi_next1_dones = batch_dones.to(self.actor.device).clone()
-        sample = T.zeros((self.batch_size, *self.input_dims), requires_grad=False).to(self.actor.device)
+        sample = T.zeros((self.batch_size, sum(self.input_dims)), requires_grad=False).to(self.actor.device)
 
         # print(batch_multi_next1_rewards, batch_multi_next1_rewards.grad)
 
