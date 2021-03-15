@@ -13,7 +13,7 @@ class Agent_sac():
     def __init__(self, env_id, env, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, tau=0.005, layer1_dim=256, 
                  layer2_dim=256, cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=1000, gamma=0.99, erg='Yes', 
                  loss_type='MSE', max_size=1e6, algo_name='SAC', actor_update_interval=1, batch_size=256, 
-                 reparam_noise=1e-6, reward_scale=1, stoch='UVN'):
+                 reparam_noise=1e-8, reward_scale=1, stoch='N'):
         """
         Intialise actor-critic networks and experience replay buffer.
 
@@ -44,8 +44,8 @@ class Agent_sac():
         self.env = self.env.unwrapped
         state = self.env.reset()
 
-        self.input_dims = env.observation_space.shape           # input dimensions tuple
-        self.num_actions = int(env.action_space.shape[0])       # number of possible actions
+        self.input_dims = env.observation_space.shape    # input dimensions tuple
+        self.num_actions = int(env.action_space.shape[0])
         self.max_action = float(env.action_space.high[0])
         self.min_action = float(env.action_space.low[0])
 
@@ -64,7 +64,7 @@ class Agent_sac():
         self.actor_update_interval = int(actor_update_interval)
         self.batch_size = int(batch_size)
 
-        self.reparam_noise = reparam_noise    # constant for reparameterisation trick stability
+        self.reparam_noise = reparam_noise
         self.reward_scale = reward_scale
         self.stoch = str(stoch)
 
@@ -89,12 +89,12 @@ class Agent_sac():
         # learn temperature via convex optimisation (gradient descent)
         self.entropy_target = -self.num_actions    # heuristic assumption
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
-        self.log_alpha = T.zeros((1,), requires_grad=True)
+        self.log_alpha = T.zeros((1,), requires_grad=True, device=self.device)
         self.temp_optimiser = T.optim.Adam([self.log_alpha], lr=self.lr_kappa)
         
         self.update_network_parameters(self.tau)
 
-        batch_next_states = T.zeros((self.batch_size, *self.input_dims), requires_grad=True).to(self.actor.device)
+        batch_next_states = T.zeros((self.batch_size, sum(self.input_dims)), requires_grad=True).to(self.actor.device)
         batch_rewards = T.zeros((self.batch_size, ), requires_grad=True).to(self.actor.device)
         # self.select_next_action(batch_next_states, self.stoch, multi='No')
         self.single_step_target(batch_rewards, batch_next_states, None, self.stoch, self.erg)
@@ -139,13 +139,13 @@ class Agent_sac():
 
         return batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
 
-    def select_next_action(self, state, stoch='UVN', multi='No'):
+    def select_next_action(self, state, stoch='N', multi='No'):
         """
         Agent selects next action with added noise to each component or during warmup a random action taken.
 
         Parameters:
             state (list): current environment state
-            stoch (str): stochastic policy sampling via 'B', 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            stoch (str): stochastic policy sampling via 'L' 'MVN', 'T' or 'N' distribution
             multi (str): whether action is being taken as part of n-step targets
 
         Return:
@@ -172,7 +172,7 @@ class Agent_sac():
 
         return numpy_next_action, next_action
     
-    def single_step_target(self, batch_rewards, batch_next_states, batch_dones, stoch='UVN', erg='Yes'):
+    def single_step_target(self, batch_rewards, batch_next_states, batch_dones, stoch='N', erg='Yes'):
         """
         Standard single step target Q-values for mini-batch.
 
@@ -180,7 +180,7 @@ class Agent_sac():
             batch_rewards (array): batch of rewards from current states
             batch_next_states (array): batch of next environment states
             batch_dones (array): batch of done flags
-            stoch (str): stochastic policy sampling via 'B', 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            stoch (str): stochastic policy sampling via 'L' 'MVN', 'T' or 'N' distribution
             erg (str): whether to assume ergodicity
         
         Returns:
@@ -203,7 +203,6 @@ class Agent_sac():
         q1_target, q2_target = q1_target.view(-1), q2_target.view(-1)
     
         # twin duelling soft target critic values
-        self.log_alpha = self.log_alpha.to(self.device)
         soft_q_target = T.min(q1_target, q2_target)
         soft_value = soft_q_target - self.log_alpha.exp() * batch_next_logprob_actions
         target = self.reward_scale * batch_rewards + self.gamma * soft_value
@@ -211,7 +210,7 @@ class Agent_sac():
 
         return batch_target
 
-    def multi_step_target(self, batch_rewards, batch_next_states, batch_dones, env, stoch='UVN', erg='Yes', n_step=1):
+    def multi_step_target(self, batch_rewards, batch_next_states, batch_dones, env, stoch='N', erg='Yes', n_step=1):
         """
         Multi-step target Q-values for mini-batch based on repeatedly propogating n times through policy network 
         using greedy action selection with added noise to simulate additional steps from the current environment state
@@ -222,7 +221,7 @@ class Agent_sac():
             batch_next_states (array): batch of next environment states
             batch_dones (array): batch of done flags
             env (gym object): gym environment
-            stoch (str): stochastic policy 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            stoch (str): stochastic policy 'L' 'MVN', 'T' or 'N' distribution
             erg (str): whether to assume ergodicity
             n_steps (int): number of steps of greedy action selection to take
         
@@ -240,7 +239,7 @@ class Agent_sac():
     
         print('MULTI-STEP NOT YET IMPLEMENTED')
 
-    def learn(self, batch_states, batch_actions, batch_target, loss_type, stoch='UVN', erg='Yes'):
+    def learn(self, batch_states, batch_actions, batch_target, loss_type, stoch='N', erg='Yes'):
         """
         Agent learning via SAC algorithm.
 
@@ -249,7 +248,7 @@ class Agent_sac():
             batch_actions (array): batch of continuous actions taken to arrive at states
             batch_target (array): twin duelling target Q-values
             loss_type (str): surrogate loss functions
-            stoch (str): stochastic policy 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            stoch (str): stochastic policy 'L' 'MVN', 'T' or 'N' distribution
             erg (str): whether to assume ergodicity
 
         Returns:
