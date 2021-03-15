@@ -1,5 +1,15 @@
 # Project Log
 
+* 2021-03-15
+
+Realised that automatic temperature tuning was not taking place and instead we were working with fixed value of 1 as with earlier SAC work. Corrected with minor modification. Temperature behaviour is found to be consistent with literature where it quickly crashes to zero and steadily begins to climb.
+
+Humanoid movement experiment with MSE conducted and is seen to be a very tough challenge. TD3 begins learning whereas as alluded to in update 2021-03-03, SAC struggles when dealing with negative episodic scores. This is because the environment is so challenging that the agent consistently fails for a very long time while -1 penalties per time step accumulate. Then being off-policy, when the mini-batch is pooled the agent has no concept of positive rewards and only maximises to zero. Some confirmation of this issue is found in [Raffin and Stulp (2020)](https://arxiv.org/pdf/2005.05719.pdf) where they also did not run humanoid experiments when it would have simply involved typing “HumanoidBulletEnv-v0” once.
+
+There doesn’t seem to be any general solution to this problem. While we could add a constant score offset for first couple thousand episodes to ensure non-negative scores, the same would have to be done for TD3. For the time being we will not run anymore humanoid experiments.
+
+See results for trial humanoid runs. It is empirically found that TD3 is roughly 1.5x faster than SAC the exact source of the difference is unclear but might be due to the 2.5x large mini-batch size for SAC. 
+
 * 2021-03-14
 
 Learned how RAM works and that appending is much faster than inputting into a large numpy array. Modified main.py to append episode data resulting in 8-11% increase in overall speed.
