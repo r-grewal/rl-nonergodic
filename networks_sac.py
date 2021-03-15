@@ -24,7 +24,7 @@ class ActorNetwork(nn.Module):
             lr_alpha (float>0): actor learning rate of Adam optimiser
             reparam_noise (float>0): miniscule constant for valid logarithm
             algo_name (string): name of algorithm
-            loss_type (str): Cauchy, CE, Huber, KL, MAE, MSE, TCauchy loss functions
+            loss_type (str): critic loss functions
             nn_name (string): name of network
         """
         super(ActorNetwork, self).__init__()
@@ -47,7 +47,7 @@ class ActorNetwork(nn.Module):
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape
-        self.fc1 = nn.Linear(self.input_dims[0], self.fc1_dim)
+        self.fc1 = nn.Linear(sum(self.input_dims), self.fc1_dim)
         self.fc2 = nn.Linear(self.fc1_dim, self.fc2_dim)
         self.mu = nn.Linear(self.fc2_dim, self.num_actions * 2)
 
@@ -76,14 +76,14 @@ class ActorNetwork(nn.Module):
 
         return moments
     
-    def stochastic_uv(self, state, stoch='UVN'):
+    def stochastic_uv(self, state, stoch='N'):
         """ 
         Stochastic action selection sampled from several unbounded univarite distirbution
         using the reparameterisation trick from https://arxiv.org/pdf/1312.6114.pdf.
         
         Parameters:
             state (list): current environment state or mini-batch
-            stoch (str): stochastic policy 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            stoch (str): stochastic policy 'L' 'MVN', 'T' or 'N' distribution
 
         Returns:
             bounded_action (list, float): action truncated by tanh and scaled by max action
@@ -93,10 +93,11 @@ class ActorNetwork(nn.Module):
         mu, log_scale = moments[:, :self.num_actions], moments[:, self.num_actions:]
         scale = log_scale.exp()
         
-        if stoch == 'UVN':
+        if stoch == 'N':
             probabilities = distibution.normal.Normal(loc=mu, scale=scale)
-        elif stoch == 'ST':
-            probabilities = distibution.studentT.StudentT(mu.shape[0]-1, loc=mu, scale=scale)
+        elif stoch == 'T':
+            df = mu.shape[1] - 1
+            probabilities = distibution.studentT.StudentT(df, loc=mu, scale=scale)
         else:
             probabilities = distibution.laplace.Laplace(loc=mu, scale=scale)
 
@@ -161,11 +162,11 @@ class ActorNetwork(nn.Module):
         return bounded_action, bounded_logprob_action
 
     def save_checkpoint(self):
-        print('... saving checkpoint')
+        # print('... saving checkpoint')
         T.save(self.state_dict(), self.file_checkpoint)
 
     def load_checkpoint(self):
-        print('... loading checkpoint')
+        # print('... loading checkpoint')
         self.load_state_dict(T.load(self.file_checkpoint))
 
 class CriticNetwork(nn.Module):
@@ -208,7 +209,7 @@ class CriticNetwork(nn.Module):
                                         +'_'+self.loss_type+'_'+self.nn_name)
 
         # network inputs environment space shape and number of actions
-        self.fc1 = nn.Linear(self.input_dims[0] + self.num_actions, self.fc1_dim)
+        self.fc1 = nn.Linear(sum(self.input_dims) + self.num_actions, self.fc1_dim)
         self.fc2 = nn.Linear(self.fc1_dim, self.fc2_dim)
         self.q = nn.Linear(self.fc2_dim, 1)
 
@@ -237,9 +238,7 @@ class CriticNetwork(nn.Module):
         return soft_Q
 
     def save_checkpoint(self):
-        print('... saving checkpoint')
         T.save(self.state_dict(), self.file_checkpoint)
 
     def load_checkpoint(self):
-        print('... loading checkpoint')
         self.load_state_dict(T.load(self.file_checkpoint))
