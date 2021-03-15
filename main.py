@@ -6,7 +6,7 @@ import pybullet_envs
 import numpy as np
 from algo_td3 import Agent_td3
 from algo_sac import Agent_sac
-from utils import plot_learning_curve, plot_trial_curve
+import utils
 
 gym_envs = [# 'LunarLanderContinuous-v2', 'BipedalWalker-v3', 'BipedalWalkerHardcore-v3',
             # 'CartPoleContinuousBulletEnv-v0', 'InvertedPendulumBulletEnv-v0',
@@ -19,13 +19,12 @@ warmup = np.array([1e3 for envs in range(len(gym_envs))])
 warmup[-3:] *= 10
 
 # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
-surrogate_critic_loss = ['MSE6']
+surrogate_critic_loss = ['MSE']
 
-ENV = 3                               # select environment
+ENV = 4                     # select environment
 env_id = gym_envs[ENV]    
 env = gym.make(env_id)
-# env = env.env
-env = env.unwrapped                 # allow access to setting enviroment state and remove episode step limit
+env = env.env               # allow access to setting enviroment state and remove episode step limit          
 
 for loss_fn in surrogate_critic_loss:
 
@@ -37,11 +36,11 @@ for loss_fn in surrogate_critic_loss:
 
             # SAC hyperparameters
             'r_scale': 1,                   # reward scaling to offset entropy target ('inverse temperature')
-            's_dist': 'UVN',                # stochastic actor policy via 'LAP' 'MVN', 'ST' or 'UVN' distribution
+            's_dist': 'N',                  # stochastic actor policy via 'L' 'MVN', 'T' or 'N' distribution
 
             # execution details
             'random': warmup[ENV],          # intial random warmup steps to generate random seed
-            'max_steps': 1e4,               # maximum number of steps per episode to prevent excessive runtime
+            'max_steps': 2e4,               # maximum number of steps per episode to prevent excessive runtime
             'discount': 0.99,               # discount factor for successive step
             'trail': 50,                    # moving average count of episode scores used for model saving and plots
             'ergodicity': 'Yes',            # assume ergodicity 'Yes' or 'No'  
@@ -49,18 +48,18 @@ for loss_fn in surrogate_critic_loss:
             'buffer': 1e6,                  # maximum transistions in experience replay buffer
             'multi_steps': 1,               # bootstrapped steps of target critic values and discounted rewards
             'n_trials': 3,                  # number of total trials
-            'n_cumsteps': 2e4,              # maximum cumulative steps per trial
+            'n_cumsteps': 2e5,              # maximum cumulative steps per trial
             'algo': 'SAC'                   # model 'TD3' or 'SAC'
             }  
 
-    trial_log = np.zeros((inputs['n_trials'], int(inputs['n_cumsteps']), 11))
+    trial_log = np.zeros((inputs['n_trials'], int(inputs['n_cumsteps'])*5, 11))
 
     for round in range(inputs['n_trials']):
 
         if inputs['algo'] == 'TD3':
             batch_size = 100
             agent = Agent_td3(env_id, env, lr_alpha=0.001, lr_beta=0.001, tau=5e-3, layer1_dim=400, layer2_dim=300, 
-                            cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=inputs['random'], gamma=inputs['discount'], 
+                            cauchy_scale_1=1, cauchy_scale_2=1, warmup=inputs['random'], gamma=inputs['discount'], 
                             erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], max_size=inputs['buffer'], 
                             algo_name=inputs['algo'], actor_update_interval=2, batch_size=batch_size,  
                             policy_noise=inputs['policy_noise'], target_policy_noise=inputs['target_policy_noise'], 
@@ -69,14 +68,14 @@ for loss_fn in surrogate_critic_loss:
         elif inputs['algo'] == 'SAC':
             batch_size = 256
             agent = Agent_sac(env_id, env, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, tau=5e-3, layer1_dim=256, 
-                            layer2_dim=256, cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=inputs['random'],
-                            gamma=inputs['discount'], erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], 
-                            max_size=inputs['buffer'], algo_name=inputs['algo'], actor_update_interval=1, 
-                            batch_size=batch_size, reparam_noise=1e-6, reward_scale=inputs['r_scale'], stoch=inputs['s_dist'])
+                            layer2_dim=256, cauchy_scale_1=1, cauchy_scale_2=1, warmup=inputs['random'], gamma=inputs['discount'],
+                            erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], max_size=inputs['buffer'], 
+                            algo_name=inputs['algo'], actor_update_interval=1, batch_size=batch_size, reparam_noise=1e-8, 
+                            reward_scale=inputs['r_scale'], stoch=inputs['s_dist'])
 
         # agent.load_models()    # load existing actor-critic network parameters to continue learning
 
-        best_score = env.reward_range[0]    # set intial best to worst possible reward
+        best_score = env.reward_range[0]
         time_log, score_log, step_log, logtemp_log, loss_log, loss_params_log = [], [], [], [], [], []
         cum_steps, episode = 0, 1
 
@@ -108,7 +107,7 @@ for loss_fn in surrogate_critic_loss:
                 score += reward
                 step += 1
                 cum_steps += 1
-
+                
                 if step > int(inputs['max_steps']):
                     break
 
@@ -125,12 +124,13 @@ for loss_fn in surrogate_critic_loss:
             if trail_score > best_score:
                 best_score = trail_score
                 agent.save_models()
+                print('New high score!')
 
             fin = datetime.now()
-
-            print('{} {} {:1.0f}/s ep/st/cst {}/{}/{}: r {:1.0f}, r{} {:1.0f}, C/A loss {:1.1f}/{:1.1f}'
-                .format(fin.strftime('%d %H:%M:%S'), loss_fn, step/time_log[-1], episode, step, 
-                        cum_steps, score, inputs['trail'], trail_score, sum(loss[0:2]), loss[2]))
+            
+            print('{} {}-{}-{} {:1.0f}/s ep/st/cst {}/{}/{}: r {:1.0f}, r{} {:1.0f}, T/Cg/Cs {:1.2f}/{:1.2f}/{:1.2f}, C/A {:1.1f}/{:1.1f}'
+                .format(fin.strftime('%d %H:%M:%S'), inputs['algo'], loss_fn, round+1, step/time_log[-1], episode, step, cum_steps, score, 
+                    inputs['trail'], trail_score, np.exp(logtemp), sum(loss_params[0:2])/2, sum(loss_params[2:4])/2, sum(loss[0:2]), loss[2]))
 
             episode += 1
 
@@ -146,12 +146,12 @@ for loss_fn in surrogate_critic_loss:
         directory = dir1 + dir2 + dir3
 
         count = len(score_log)
+        
+        trial_log[round, :count, 0], trial_log[round, :count, 1] =  time_log, score_log
+        trial_log[round, :count, 2], trial_log[round, :count, 3:6] = step_log, loss_log
+        trial_log[round, :count, 6], trial_log[round, :count, 7:] = logtemp_log, loss_params_log
 
-        trial_log[round, :count, 0], trial_log[round, :count, 1] =  np.array(time_log), np.array(score_log)
-        trial_log[round, :count, 2], trial_log[round, :count, 3:6] = np.array(step_log), np.array(loss_log)
-        trial_log[round, :count, 6], trial_log[round, :count, 7:] = np.array(logtemp_log), np.array(loss_params_log)
-
-        plot_learning_curve(env_id, inputs, trial_log[round], directory+'.png')
+        utils.plot_learning_curve(env_id, inputs, trial_log[round], directory+'.png')
 
     # truncate log up to maximum episodes
     count_episodes = []
@@ -164,4 +164,4 @@ for loss_fn in surrogate_critic_loss:
 
     # plot combined trials
     if inputs['n_trials'] > 1:
-        plot_trial_curve(env_id, inputs, trial_log, directory+'_combined.png')
+        utils.plot_trial_curve(env_id, inputs, trial_log, directory+'_combined.png')
