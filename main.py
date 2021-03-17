@@ -18,10 +18,10 @@ gym_envs = [# 'LunarLanderContinuous-v2', 'BipedalWalker-v3', 'BipedalWalkerHard
 warmup = np.array([1e3 for envs in range(len(gym_envs))])
 warmup[-3:] *= 10
 
-# 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
+# 'MSE', 'MAE', 'Huber', 'HSC', 'Cauchy', 'TCauchy', 'CIM', 'MSE2', 'MSE4', 'MSE6'
 surrogate_critic_loss = ['MSE']
 
-ENV = 4                     # select environment
+ENV = 1                     # select environment
 env_id = gym_envs[ENV]    
 env = gym.make(env_id)
 env = env.env               # allow access to setting enviroment state and remove episode step limit          
@@ -30,48 +30,45 @@ for loss_fn in surrogate_critic_loss:
 
     inputs = {
             # TD3 hyperparameters
-            'policy_noise': 0.1,            # Gaussian exploration noise added to next agent action
+            'policy_noise': 0.1,            # Gaussian exploration noise added to next agent actions
             'target_policy_noise': 0.2,     # Gaussian noise added to next target actions
             'target_policy_clip': 0.5,      # noise cliping of next target actions
-
-            # SAC hyperparameters
-            'r_scale': 1,                   # reward scaling to offset entropy target ('inverse temperature')
-            's_dist': 'N',                  # stochastic actor policy via 'L' 'MVN', 'T' or 'N' distribution
 
             # execution details
             'random': warmup[ENV],          # intial random warmup steps to generate random seed
             'max_steps': 2e4,               # maximum number of steps per episode to prevent excessive runtime
             'discount': 0.99,               # discount factor for successive step
             'trail': 50,                    # moving average count of episode scores used for model saving and plots
+            's_dist': 'N',                  # stochastic actor policy sampling via 'L' or 'N' distribution
             'ergodicity': 'Yes',            # assume ergodicity 'Yes' or 'No'  
-            'loss_fn': loss_fn,             # 'Cauchy', 'CIM', 'HSC', 'Huber', 'MAE', 'MSE', 'MSE2', 'MSE4', 'MSE6', 'TCauchy'
+            'loss_fn': loss_fn,             # 'MSE', 'MAE', 'Huber', 'HSC', 'Cauchy', 'TCauchy', 'CIM', 'MSE2', 'MSE4', 'MSE6'
             'buffer': 1e6,                  # maximum transistions in experience replay buffer
             'multi_steps': 1,               # bootstrapped steps of target critic values and discounted rewards
             'n_trials': 3,                  # number of total trials
-            'n_cumsteps': 2e5,              # maximum cumulative steps per trial
-            'algo': 'SAC'                   # model 'TD3' or 'SAC'
-            }  
+            'n_cumsteps': 5e4,              # maximum cumulative steps per trial
+            'algo': 'TD3'                   # model 'TD3' or 'SAC'
+            }
 
-    trial_log = np.zeros((inputs['n_trials'], int(inputs['n_cumsteps'])*5, 11))
+    trial_log = np.zeros((inputs['n_trials'], int(inputs['n_cumsteps']), 11))
 
     for round in range(inputs['n_trials']):
 
         if inputs['algo'] == 'TD3':
             batch_size = 100
-            agent = Agent_td3(env_id, env, lr_alpha=0.001, lr_beta=0.001, tau=5e-3, layer1_dim=400, layer2_dim=300, 
+            agent = Agent_td3(env_id, env, lr_alpha=1e-3, lr_beta=1e-3, tau=5e-3, layer1_dim=400, layer2_dim=300, 
                             cauchy_scale_1=1, cauchy_scale_2=1, warmup=inputs['random'], gamma=inputs['discount'], 
-                            erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], max_size=inputs['buffer'], 
-                            algo_name=inputs['algo'], actor_update_interval=2, batch_size=batch_size,  
-                            policy_noise=inputs['policy_noise'], target_policy_noise=inputs['target_policy_noise'], 
-                            target_policy_clip=inputs['target_policy_clip'])                
+                            stoch=inputs['s_dist'], erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], 
+                            max_size=inputs['buffer'], algo_name=inputs['algo'], actor_update_interval=2, 
+                            batch_size=batch_size,  policy_noise=inputs['policy_noise'], 
+                            target_policy_noise=inputs['target_policy_noise'], target_policy_clip=inputs['target_policy_clip'])                
 
         elif inputs['algo'] == 'SAC':
             batch_size = 256
             agent = Agent_sac(env_id, env, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, tau=5e-3, layer1_dim=256, 
-                            layer2_dim=256, cauchy_scale_1=1, cauchy_scale_2=1, warmup=inputs['random'], gamma=inputs['discount'],
-                            erg=inputs['ergodicity'], loss_type=inputs['loss_fn'], max_size=inputs['buffer'], 
-                            algo_name=inputs['algo'], actor_update_interval=1, batch_size=batch_size, reparam_noise=1e-8, 
-                            reward_scale=inputs['r_scale'], stoch=inputs['s_dist'])
+                            layer2_dim=256, cauchy_scale_1=1, cauchy_scale_2=1, warmup=inputs['random'],
+                            gamma=inputs['discount'], stoch=inputs['s_dist'], erg=inputs['ergodicity'], 
+                            loss_type=inputs['loss_fn'], max_size=inputs['buffer'], algo_name=inputs['algo'], 
+                            actor_update_interval=1, batch_size=batch_size, reparam_noise=1e-6, reward_scale=1)
 
         # agent.load_models()    # load existing actor-critic network parameters to continue learning
 
@@ -128,9 +125,10 @@ for loss_fn in surrogate_critic_loss:
 
             fin = datetime.now()
             
-            print('{} {}-{}-{} {:1.0f}/s ep/st/cst {}/{}/{}: r {:1.0f}, r{} {:1.0f}, T/Cg/Cs {:1.2f}/{:1.2f}/{:1.2f}, C/A {:1.1f}/{:1.1f}'
-                .format(fin.strftime('%d %H:%M:%S'), inputs['algo'], loss_fn, round+1, step/time_log[-1], episode, step, cum_steps, score, 
-                    inputs['trail'], trail_score, np.exp(logtemp), sum(loss_params[0:2])/2, sum(loss_params[2:4])/2, sum(loss[0:2]), loss[2]))
+            print('{} {}-{}-{}-{} {:1.0f}/s ep/st/cst {}/{}/{}: r {:1.0f}, r{} {:1.0f}, T/Cg/Cs {:1.2f}/{:1.2f}/{:1.2f}, C/A {:1.1f}/{:1.1f}'
+                .format(fin.strftime('%d %H:%M:%S'), inputs['algo'], inputs['s_dist'], loss_fn, round+1, step/time_log[-1], 
+                    episode, step, cum_steps, score, inputs['trail'], trail_score, np.exp(logtemp), 
+                    sum(loss_params[0:2])/2, sum(loss_params[2:4])/2, sum(loss[0:2]), loss[2]))
 
             episode += 1
 
@@ -138,10 +136,8 @@ for loss_fn in surrogate_critic_loss:
             os.makedirs('./results/'+env_id)
         
         exp = int(len(str(int(inputs['n_cumsteps']))) - 1)
-        dir1 = 'results/'+env_id+'/'+env_id+'--'+inputs['algo']+'_g'+inputs['ergodicity'][0]+'_'+inputs['loss_fn']
-        dir2 = '_b'+str(int(inputs['buffer']/1e6))+'_m'+str(inputs['multi_steps'])
-        if inputs['algo'] == 'SAC':
-            dir2 += '_r'+str(inputs['r_scale'])+'_'+inputs['s_dist']
+        dir1 = 'results/'+env_id+'/'+env_id+'--'+inputs['algo']+'-'+inputs['s_dist']+'_g'+inputs['ergodicity'][0]
+        dir2 = '_'+inputs['loss_fn']+'_b'+str(int(inputs['buffer']/1e6))+'_m'+str(inputs['multi_steps']) 
         dir3 = '_'+str(exp)+'s'+str(int(inputs['n_cumsteps']))[0]+'_n'+str(round+1)
         directory = dir1 + dir2 + dir3
 
@@ -162,6 +158,5 @@ for loss_fn in surrogate_critic_loss:
 
     np.save(directory+'.npy', trial_log)
 
-    # plot combined trials
     if inputs['n_trials'] > 1:
         utils.plot_trial_curve(env_id, inputs, trial_log, directory+'_combined.png')
