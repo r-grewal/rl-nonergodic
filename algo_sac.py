@@ -10,10 +10,10 @@ class Agent_sac():
     """
     SAC agent algorithm based on https://arxiv.org/pdf/1812.05905.pdf.
     """                             
-    def __init__(self, env_id, env, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, tau=0.005, layer1_dim=256, 
-                 layer2_dim=256, cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=1000, gamma=0.99, erg='Yes', 
-                 loss_type='MSE', max_size=1e6, algo_name='SAC', actor_update_interval=1, batch_size=256, 
-                 reparam_noise=1e-8, reward_scale=1, stoch='N'):
+    def __init__(self, env_id, env, lr_alpha=3e-4, lr_beta=3e-4, lr_kappa=3e-4, tau=5e-3, layer1_dim=256, 
+                 layer2_dim=256, cauchy_scale_1=1, cauchy_scale_2=1, warmup=1000, gamma=0.99, stoch='N',
+                 erg='Yes', loss_type='MSE', max_size=1e6, algo_name='SAC', actor_update_interval=1, 
+                 batch_size=256, reparam_noise=1e-6, reward_scale=1):
         """
         Intialise actor-critic networks and experience replay buffer.
 
@@ -29,6 +29,7 @@ class Agent_sac():
             cauchy_scale (float>0): intialisation value for Cauchy scale parameter
             warmup (int): intial random warmup steps to generate random seed
             gamma (float<=1): discount factor
+            stoch (str): stochastic actor policy sampling distribution
             erg (str): whether to assume ergodicity
             loss_type (str): critic loss functions
             max_size (int): maximum size of replay buffer
@@ -37,7 +38,6 @@ class Agent_sac():
             batch_size (int): mini-batch size
             reparam_noise (float>0): miniscule constant to keep logarithm bounded
             reward_scale (float): constant factor scaling ('inverse temperature')
-            stoch (str): stochastic actor policy sampling distribution
         """
         self.env_id = env_id
         self.env = gym.make(self.env_id)
@@ -57,6 +57,7 @@ class Agent_sac():
         self.cauchy_scale_2 = cauchy_scale_2
         self.warmup = int(warmup)
         self.gamma = gamma
+        self.stoch = str(stoch)
         self.erg = str(erg)
         self.loss_type = str(loss_type)
 
@@ -66,7 +67,6 @@ class Agent_sac():
 
         self.reparam_noise = reparam_noise
         self.reward_scale = reward_scale
-        self.stoch = str(stoch)
 
         self.time_step = 0
         self.learn_step_cntr = 0
@@ -86,8 +86,8 @@ class Agent_sac():
         self.critic_2_target = CriticNetwork(env_id, self.input_dims, layer1_dim, layer2_dim, self.num_actions, 
                                 self.max_action, lr_beta, algo_name, loss_type, nn_name='critic_2_target')
 
-        # learn temperature via convex optimisation (gradient descent)
-        self.entropy_target = -self.num_actions    # heuristic assumption
+        # learn temperature via convex optimisation (dual gradient descent approximation)
+        self.entropy_target = -float(self.num_actions)    # heuristic assumption
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
         self.log_alpha = T.zeros((1,), requires_grad=True, device=self.device)
         self.temp_optimiser = T.optim.Adam([self.log_alpha], lr=self.lr_kappa)
@@ -145,7 +145,7 @@ class Agent_sac():
 
         Parameters:
             state (list): current environment state
-            stoch (str): stochastic policy sampling via 'L' 'MVN', 'T' or 'N' distribution
+            stoch (str): stochastic policy sampling via 'L' 'MVN' or 'N' distribution
             multi (str): whether action is being taken as part of n-step targets
 
         Return:
@@ -180,7 +180,7 @@ class Agent_sac():
             batch_rewards (array): batch of rewards from current states
             batch_next_states (array): batch of next environment states
             batch_dones (array): batch of done flags
-            stoch (str): stochastic policy sampling via 'L' 'MVN', 'T' or 'N' distribution
+            stoch (str): stochastic policy sampling via 'L' 'MVN' or 'N' distribution
             erg (str): whether to assume ergodicity
         
         Returns:
@@ -221,7 +221,7 @@ class Agent_sac():
             batch_next_states (array): batch of next environment states
             batch_dones (array): batch of done flags
             env (gym object): gym environment
-            stoch (str): stochastic policy 'L' 'MVN', 'T' or 'N' distribution
+            stoch (str): stochastic policy 'L' 'MVN' or 'N' distribution
             erg (str): whether to assume ergodicity
             n_steps (int): number of steps of greedy action selection to take
         
@@ -248,7 +248,7 @@ class Agent_sac():
             batch_actions (array): batch of continuous actions taken to arrive at states
             batch_target (array): twin duelling target Q-values
             loss_type (str): surrogate loss functions
-            stoch (str): stochastic policy 'L' 'MVN', 'T' or 'N' distribution
+            stoch (str): stochastic policy 'L' 'MVN' or 'N' distribution
             erg (str): whether to assume ergodicity
 
         Returns:
@@ -321,20 +321,14 @@ class Agent_sac():
 
         # learn stochastic actor policy
         self.actor.optimizer.zero_grad()
-
-        actor_loss = self.log_alpha.exp() * batch_logprob_actions - soft_q
-        actor_loss = actor_loss.mean()
+        actor_loss = (self.log_alpha.exp() * batch_logprob_actions - soft_q).mean()
         actor_loss.backward()
-        
         self.actor.optimizer.step()
 
-        # learn temperature by approximating gradient
+        # learn log temperature by approximating dual gradient
         self.temp_optimiser.zero_grad()
-
-        temp_loss = -self.log_alpha.exp() * (batch_logprob_actions.detach() + self.entropy_target)
-        temp_loss = temp_loss.mean()
+        temp_loss = (-self.log_alpha.exp() * (batch_logprob_actions.detach() + self.entropy_target)).mean()
         temp_loss.backward()
-
         self.temp_optimiser.step()
 
         self.update_network_parameters(self.tau)
