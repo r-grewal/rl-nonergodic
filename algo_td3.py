@@ -10,10 +10,10 @@ class Agent_td3():
     """
     TD3 agent algorithm based on https://arxiv.org/pdf/1802.09477.pdf.
     """
-    def __init__(self, env_id, env, lr_alpha=0.001, lr_beta=0.001, tau=0.005, layer1_dim=400, layer2_dim=300, 
-                 cauchy_scale_1=0.420, cauchy_scale_2=0.420, warmup=1000, gamma=0.99, erg='Yes', loss_type ='MSE', 
-                 max_size=1e6, algo_name='TD3', actor_update_interval=2,  batch_size=100, policy_noise=0.1, 
-                 target_policy_noise=0.2, target_policy_clip=0.5):
+    def __init__(self, env_id, env, lr_alpha=1e-3, lr_beta=1e-3, tau=5e-3, layer1_dim=400, layer2_dim=300, 
+                 cauchy_scale_1=1, cauchy_scale_2=1, warmup=1000, gamma=0.99, stoch='N', erg='Yes', 
+                 loss_type ='MSE', max_size=1e6, algo_name='TD3', actor_update_interval=2,  batch_size=100, 
+                 policy_noise=0.1, target_policy_noise=0.2, target_policy_clip=0.5):
         """
         Intialise actor-critic networks and experience replay buffer.
 
@@ -28,6 +28,7 @@ class Agent_td3():
             cauchy_scale (float>0): intialisation value for Cauchy scale parameter
             warmup (int): intial random warmup steps to generate random seed
             gamma (float<=1): discount factor
+            stoch (str): stochastic actor policy sampling distribution
             erg (str): whether to assume ergodicity
             loss_type (str): critic loss functions
             max_size (int): maximum size of replay buffer
@@ -56,6 +57,7 @@ class Agent_td3():
         self.cauchy_scale_2 = cauchy_scale_2
         self.warmup = int(warmup)
         self.gamma = gamma
+        self.stoch = str(stoch)
         self.erg = str(erg)
         self.loss_type = str(loss_type)
 
@@ -67,6 +69,10 @@ class Agent_td3():
         self.policy_noise = policy_noise * self.max_action
         self.target_policy_noise = target_policy_noise * self.max_action
         self.target_policy_clip = target_policy_clip * self.max_action
+
+        # convert Gaussian standard deviation to Laplace diveristy
+        self.policy_scale = np.sqrt(self.policy_noise**2 / 2)
+        self.target_policy_scale = np.sqrt(self.target_policy_noise**2 / 2)
 
         self.time_step = 0
         self.learn_step_cntr = 0
@@ -136,21 +142,25 @@ class Agent_td3():
 
         return batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
 
-    def select_next_action(self, state, stoch, multi='No'):
+    def select_next_action(self, state, stoch='N', multi='No'):
         """
         Agent selects next action with added noise to each component or during warmup a random action taken.
 
         Parameters:
             state (list): current environment state
-            stoch: N/A
+            stoch (str): stochastic policy sampling via 'L' or 'N' distribution
             multi (str): whether action is being taken as part of n-step targets
 
         Return:
             numpy_next_action: action to be taken by agent in next step for gym
             next_action: action to be taken by agent in next step
         """
-        action_noise = T.tensor(np.random.normal(loc=0, scale=self.policy_noise, 
-                                                 size=(self.num_actions,)), dtype=T.float)
+        if self.stoch == 'N':
+            action_noise = T.tensor(np.random.normal(loc=0, scale=self.policy_noise, 
+                                                    size=(self.num_actions,)), dtype=T.float)
+        else:
+            action_noise = T.tensor(np.random.laplace(loc=0, scale=self.policy_scale, 
+                                                    size=(self.num_actions,)), dtype=T.float)
         mu = action_noise.to(self.actor.device)
 
         if self.time_step > self.warmup:
@@ -165,7 +175,7 @@ class Agent_td3():
         
         return numpy_next_action, next_action
 
-    def single_step_target(self, batch_rewards, batch_next_states, batch_dones, erg='Yes'):
+    def single_step_target(self, batch_rewards, batch_next_states, batch_dones, stoch='N', erg='Yes'):
         """
         Standard single step target Q-values for mini-batch.
 
@@ -173,14 +183,20 @@ class Agent_td3():
             batch_rewards (array): batch of rewards from current states
             batch_next_states (array): batch of next environment states
             batch_dones (array): batch of done flags
+            stoch (str): stochastic policy sampling via 'L' or 'N' distribution
             erg (str): whether to assume ergodicity
         
         Returns:
             batch_target (array): twin duelling target Q-values
         """
-        # add random Gaussian noise to each component of next target action with clipping
-        target_action_noise = T.tensor(np.random.normal(loc=0, scale=self.target_policy_noise, 
+        # add random noise to each component of next target action with clipping
+        if self.stoch == 'N':
+            target_action_noise = T.tensor(np.random.normal(loc=0, scale=self.target_policy_noise, 
+                                                size=(self.batch_size, self.num_actions)), dtype=T.float)
+        else:
+            target_action_noise = T.tensor(np.random.laplace(loc=0, scale=self.target_policy_scale, 
                                             size=(self.batch_size, self.num_actions)), dtype=T.float)
+
         target_action_noise = target_action_noise.clamp(-self.target_policy_clip, self.target_policy_clip)
         target_action_noise = target_action_noise.to(self.actor.device)
         
@@ -200,7 +216,7 @@ class Agent_td3():
 
         return batch_target
 
-    def multi_step_target(self, batch_rewards, batch_next_states, batch_dones, env, stoch, erg='Yes', n_step=1):
+    def multi_step_target(self, batch_rewards, batch_next_states, batch_dones, env, stoch='N', erg='Yes', n_step=1):
         """
         Multi-step target Q-values for mini-batch based on repeatedly propogating n times through policy network 
         using greedy action selection with added noise to simulate additional steps from the current environment state
@@ -211,7 +227,7 @@ class Agent_td3():
             batch_next_states (array): batch of next environment states
             batch_dones (array): batch of done flags
             env (gym object): gym environment
-            stoch: N/A
+            stoch (str): stochastic policy sampling via 'L' or 'N' distribution
             erg (str): whether to assume ergodicity
             n_steps (int): number of steps of greedy action selection to take
         
@@ -245,9 +261,14 @@ class Agent_td3():
         # multi-step actions per sample contained in mini-batch
         for steps in range(n_step - 1):
 
-            # add random Gaussian noise to each target component of next action with clipping
-            target_action_noise = T.tensor(np.random.normal(loc=0, scale=self.target_policy_noise, 
+            # add random noise to each target component of next action with clipping
+            if self.stoch == 'N':
+                target_action_noise = T.tensor(np.random.normal(loc=0, scale=self.target_policy_noise, 
                                                 size=(self.batch_size, self.num_actions)), dtype=T.float)
+            else:
+                target_action_noise = T.tensor(np.random.laplace(loc=0, scale=self.target_policy_scale, 
+                                                size=(self.batch_size, self.num_actions)), dtype=T.float)
+
             target_action_noise = target_action_noise.clamp(-self.target_policy_clip, self.target_policy_clip)
             target_action_noise = target_action_noise.to(self.actor.device)
 
@@ -300,7 +321,7 @@ class Agent_td3():
 
         return batch_target
 
-    def learn(self, batch_states, batch_actions, batch_target, loss_type, stoch='UVN', erg='Yes'):
+    def learn(self, batch_states, batch_actions, batch_target, loss_type, stoch='N', erg='Yes'):
         """
         Agent learning via TD3 algorithm with multi-step bootstrapping.
 
