@@ -65,8 +65,8 @@ class ActorNetwork(nn.Module):
             state (list): current environment state
 
         Returns:
-            moments (float): first half columns for deterministic action components
-                             and second half columns for log variances of components
+            moments (float): first half columns for deterministic loc of action components
+                             and second half columns for log scales of action components
         """
         actions_2x = self.fc1(state)
         actions_2x = F.relu(actions_2x)
@@ -79,11 +79,15 @@ class ActorNetwork(nn.Module):
     def stochastic_uv(self, state, stoch='N'):
         """ 
         Stochastic action selection sampled from several unbounded univarite distirbution
-        using the reparameterisation trick from https://arxiv.org/pdf/1312.6114.pdf.
+        using the reparameterisation trick from https://arxiv.org/pdf/1312.6114.pdf. Addition
+        of constant reparameterisation noise to the logarithm is crucial, as verified in both
+        https://github.com/p-christ/Deep-Reinforcement-Learning-Algorithms-with-PyTorch/blob/master/agents/actor_critic_agents/SAC.py
+        https://github.com/philtabor/Actor-Critic-Methods-Paper-To-Code/blob/master/SAC/networks.py
+        where orders of magnitude smaller than 1e-6 prevent learning from occuring. 
         
         Parameters:
             state (list): current environment state or mini-batch
-            stoch (str): stochastic policy 'L' 'MVN', 'T' or 'N' distribution
+            stoch (str): stochastic policy 'L' or 'N' distribution
 
         Returns:
             bounded_action (list, float): action truncated by tanh and scaled by max action
@@ -95,9 +99,6 @@ class ActorNetwork(nn.Module):
         
         if stoch == 'N':
             probabilities = distibution.normal.Normal(loc=mu, scale=scale)
-        elif stoch == 'T':
-            df = mu.shape[1] - 1
-            probabilities = distibution.studentT.StudentT(df, loc=mu, scale=scale)
         else:
             probabilities = distibution.laplace.Laplace(loc=mu, scale=scale)
 
