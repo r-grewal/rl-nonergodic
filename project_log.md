@@ -1,5 +1,12 @@
 # Project Log
 
+* 2021-03-16
+
+Automatic temperature scaling is working correctly but ended up slowing the speed of learning tremendously. This was because I set the reparameterisation noise down to 1e-8 from 1e-6. This was hoping to achieve greater accuracy in log probabilities of actions as they are summed. However, this was fatal error and significantly recued the rate of learning to become completely impractical, similarly 1e-7 is also not feasible, while 1e-6 and above seem to work. This is very strange but as seen in the links provided in networks_sac.py function stochastic_uv() several other working repositories, it is necessary. This minute addition seems to become important when the probability of an action increases. Several other repositories using TensorFlow 2 do not require such a correction, perhaps this due then to the PyTorch torch.log() function.
+
+All explicit references to reward scaling factor have been removed as it is no longer necessary since temperature is being automatically scaled.
+
+
 * 2021-03-15
 
 Realised that automatic temperature tuning was not taking place and instead we were working with fixed value of 1 as with earlier SAC work. Corrected with minor modification. Temperature behaviour is found to be consistent with literature where it quickly crashes to zero and steadily begins to climb.
@@ -8,7 +15,9 @@ Humanoid movement experiment with MSE conducted and is seen to be a very tough c
 
 There doesn’t seem to be any general solution to this problem. While we could add a constant score offset for first couple thousand episodes to ensure non-negative scores, the same would have to be done for TD3. For the time being we will not run anymore humanoid experiments.
 
-See results for trial humanoid runs. It is empirically found that TD3 is roughly 1.5x faster than SAC the exact source of the difference is unclear but might be due to the 2.5x large mini-batch size for SAC. 
+See results for trial humanoid runs. It is empirically found that TD3 is roughly 1.5x faster than SAC the exact source of the difference is unclear but might be due to the 2.5x large mini-batch size for SAC.
+
+*Mini-batch size has no real impact on speed after running several benchmarks. Student-t distribution has been removed as selecting the correct degrees of freedom is non-trivial.*
 
 * 2021-03-14
 
