@@ -259,10 +259,8 @@ def plot_learning_curve(env_id, input_dict, trial_log, filename_png):
     #     ax1.vlines(x=warmup, ymin=ymin, ymax=ymax, linestyles ="dashed", color='C7')
 
     tit1 = 'Trailing '+str(int(input_dict['trail']))+' Episode Averages and '+str(partitions)[2:4]+'% Partitions \n'
-    tit2 = input_dict['algo']+': \''+env_id+'\' '+'('+'g'+input_dict['ergodicity'][0]+', '+input_dict['loss_fn']+', '
-    tit3 = 'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+', '
-    if input_dict['algo'] == 'SAC':
-            tit3 += 'r'+str(input_dict['r_scale'])+', '+input_dict['s_dist']+', '
+    tit2 = input_dict['algo']+'-'+input_dict['s_dist']+': \''+env_id+'\' '+'('+'g'+input_dict['ergodicity'][0]+', '
+    tit3 = input_dict['loss_fn']+', '+'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+', '
     tit4 = 'e'+str(int(length))+')'
     title = tit1 + tit2 + tit3 + tit4
 
@@ -280,7 +278,6 @@ def plot_trial_curve(env_id, input_dict, trial_log, filename_png):
         trial_log (array): log of episode data of a single trial
         filename_png (directory): save path of plot
     """
-    # print(trial_log[:,:25, 3:5], trial_log.shape)
     score_log = trial_log[:, :, 1]
     steps_log = trial_log[:, :, 2]
     critic_log = trial_log[:, :, 3:5].sum(axis=2)
@@ -379,10 +376,8 @@ def plot_trial_curve(env_id, input_dict, trial_log, filename_png):
     ax2.tick_params(axis='y', colors='C3')
 
     tit1 = 'Linearly Interpolated Mean and MAD Bands of '+str(input_dict['n_trials'])+' Trials \n'
-    tit2 = input_dict['algo']+': \''+env_id+'\' '+'('+'g'+input_dict['ergodicity'][0]+', '+input_dict['loss_fn']+', '
-    tit3 = 'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+', '
-    if input_dict['algo'] == 'SAC':
-            tit3 += 'r'+str(input_dict['r_scale'])+', '+input_dict['s_dist']+', '
+    tit2 = input_dict['algo']+'-'+input_dict['s_dist']+': \''+env_id+'\' '+'('+'g'+input_dict['ergodicity'][0]+', '
+    tit3 = input_dict['loss_fn']+', '+'b'+str(input_dict['buffer']/1e6)[0]+', '+'m'+str(input_dict['multi_steps'])+', '
     tit4 = 'e'+str(int(length))+')'
     title = tit1 + tit2 + tit3 + tit4
 
